@@ -105,6 +105,21 @@ PLAN_HEADINGS = (
     "## 最初に開始するWork候補",
     "## 改訂履歴",
 )
+SPLIT_PLAN_HEADINGS = (
+    "## 今回の区切り",
+    "## 今回始めるWork",
+    "## この区切りで気にすること",
+    "## 区切りに着いたらやること",
+    "## 改訂履歴",
+)
+WBS_HEADINGS = (
+    "## 到達点",
+    "## 作業パッケージ",
+    "## マイルストーン・判断ゲート",
+    "## ガントチャート",
+    "## 改訂履歴",
+)
+UNASSIGNED_TASK_REF = "未割当（Plan）"
 INTAKE_STATUSES = {"empty", "draft", "ready", "registered"}
 WORK_STATUSES = {"active", "on_hold", "handoff", "completed", "cancelled"}
 KNOWLEDGE_STATUSES = {"active", "needs_review", "retired"}
@@ -575,8 +590,8 @@ def check_request_plan(
     required = (
         "workflow_schema", "document_type", "project_id", "request_id",
         "planning_status", "plan_revision", "approved_at", "approved_by",
-        "updated_at", "updated_by", "plan_coverage",
-    )
+        "updated_at", "updated_by",
+    ) + (() if metadata.get("plan_format") == "split" else ("plan_coverage",))
     for field in required:
         if is_placeholder(metadata.get(field)):
             add(findings, "error", f"進行計画frontmatterの{field}が未設定です: {relative}")
@@ -598,6 +613,9 @@ def check_request_plan(
         if not is_placeholder(value) and not DATE_PATTERN.fullmatch(value):
             add(findings, "error", f"進行計画frontmatterの{field}の形式が不正です: {relative}")
     text = read_text(path)
+    if metadata.get("plan_format") == "split":
+        check_split_plan(path, metadata, request_id, planning_status, project_ids, root, findings)
+        return
     for heading in PLAN_HEADINGS:
         if heading not in text:
             add(findings, "error", f"進行計画に必須見出しがありません: {heading}: {relative}")
@@ -643,6 +661,152 @@ def check_request_plan(
         add(findings, "error", f"WBS型の進行計画にWBS表がありません: {request_id}")
     if "## WBS・担当・日程" in text:
         check_wbs(text, ids, findings)
+
+
+def check_split_plan(path: Path, metadata: dict[str, str], request_id: str, planning_status: str,
+                     project_ids: set[str], root: Path, findings: list[Finding]) -> None:
+    """WBS（長期）と進行計画（次の区切り）を分けた計画を検査する。"""
+    relative = nfc(path.relative_to(root).as_posix())
+    text = read_text(path)
+    for heading in SPLIT_PLAN_HEADINGS:
+        if heading not in text:
+            add(findings, "error", f"進行計画に必須見出しがありません: {heading}: {relative}")
+    wbs_file = metadata.get("wbs_file", "")
+    if wbs_file != f"02_CT_管理/進行計画/{request_id}_WBS.md":
+        add(findings, "error", f"進行計画のwbs_fileの配置またはファイル名が不正です: {request_id}")
+    wbs_path = root / wbs_file
+    if not wbs_file or not wbs_path.is_file():
+        add(findings, "error", f"進行計画のWBSがありません: {request_id}")
+        return
+    wbs_relative = nfc(wbs_path.relative_to(root).as_posix())
+    wbs_meta = read_frontmatter(wbs_path)
+    for key, expected in (("workflow_schema", SCHEMA_VERSION), ("document_type", "request_wbs"),
+                          ("request_id", request_id)):
+        if wbs_meta.get(key) != expected:
+            add(findings, "error", f"WBSの{key}が一致しません: {wbs_relative}")
+    if project_ids and wbs_meta.get("project_id") not in project_ids:
+        add(findings, "error", f"WBSのproject_idが案件と一致しません: {wbs_relative}")
+    for field in ("updated_at", "updated_by"):
+        if is_placeholder(wbs_meta.get(field)):
+            add(findings, "error", f"WBS frontmatterの{field}が未設定です: {wbs_relative}")
+    wbs_text = read_text(wbs_path)
+    for heading in WBS_HEADINGS:
+        if heading not in wbs_text:
+            add(findings, "error", f"WBSに必須見出しがありません: {heading}: {wbs_relative}")
+
+    works = {}
+    for work in current_work_dirs(root):
+        scope_path = work / "作業内容.md"
+        if scope_path.is_file():
+            scope = read_frontmatter(scope_path)
+            if scope.get("request_id") == request_id:
+                works[scope.get("work_id", "")] = scope
+
+    packages = close_gate.wbs_rows(wbs_text)
+    if planning_status == "approved" and not packages:
+        add(findings, "error", f"計画承認済みですがWBSに作業パッケージがありません: {request_id}")
+    nodes: dict[str, list[str]] = {}
+    for row in packages:
+        if len(row) != 11:
+            add(findings, "error", f"WBSの作業パッケージ行の列数が不正です: {row[0]}")
+            continue
+        if row[0] in nodes:
+            add(findings, "error", f"WBSの計画項目IDが重複しています: {row[0]}")
+        nodes[row[0]] = row
+    for node_id, row in nodes.items():
+        _, parent, title, _, _, start, end, predecessors, confidence, state, linked = row
+        if parent != "なし" and parent not in nodes:
+            add(findings, "error", f"WBSの親項目がありません: {node_id}")
+        if not title:
+            add(findings, "error", f"WBSの作業パッケージ名がありません: {node_id}")
+        for value in (start, end):
+            if value != "未定":
+                try:
+                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                        raise ValueError(value)
+                    date.fromisoformat(value)
+                except ValueError:
+                    add(findings, "error", f"WBSの予定日の形式が不正です: {node_id}")
+        if start != "未定" and end != "未定" and start > end:
+            add(findings, "error", f"WBSの開始・終了予定が逆転しています: {node_id}")
+        if confidence not in close_gate.DATE_CONFIDENCE:
+            add(findings, "error", f"WBSの日付の確度が不正です: {node_id}")
+        if state not in close_gate.WBS_STATES:
+            add(findings, "error", f"WBSの状態が不正です: {node_id}")
+        for predecessor in close_gate.split_ids(predecessors):
+            if predecessor not in nodes:
+                add(findings, "error", f"WBSの先行IDがありません: {node_id} -> {predecessor}")
+            elif start != "未定" and nodes[predecessor][6] != "未定" and start < nodes[predecessor][6]:
+                add(findings, "error", f"WBSの先行作業が終了予定前です: {node_id}")
+        expected_works = sorted(w for w, scope in works.items() if scope.get("plan_item_id") == node_id)
+        if sorted(close_gate.split_ids(linked)) != expected_works:
+            add(findings, "error", f"WBSの紐づくWorkがWorkのplan_item_idと一致しません: {node_id}")
+    for work_id, scope in works.items():
+        if scope.get("plan_item_id") not in nodes:
+            add(findings, "error", f"Workのplan_item_idがWBSにありません: {work_id}")
+    graph = {node_id: close_gate.split_ids(row[7]) + [c for c, r in nodes.items() if r[1] == node_id]
+             for node_id, row in nodes.items()}
+    visited: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(node_id: str) -> None:
+        if node_id in visiting:
+            add(findings, "error", f"WBSの依存関係が循環しています: {node_id}")
+            return
+        if node_id in visited:
+            return
+        visiting.add(node_id)
+        for nxt in graph.get(node_id, []):
+            if nxt in nodes:
+                visit(nxt)
+        visiting.remove(node_id)
+        visited.add(node_id)
+
+    for node_id in graph:
+        visit(node_id)
+    for row in close_gate.wbs_milestones(wbs_text):
+        if len(row) != 6 or (row[1] != "未定" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row[1])) \
+                or row[2] not in close_gate.DATE_CONFIDENCE:
+            add(findings, "error", f"WBSのマイルストーン行が不正です: {row[0]}")
+    block = close_gate.gantt_block(wbs_text)
+    if block is None:
+        add(findings, "error", f"WBSにガントの生成区間がありません: {wbs_relative}")
+    elif block != "\n".join(close_gate.render_gantt(wbs_text, close_gate.wbs_title(wbs_text))):
+        add(findings, "error", f"WBSのガントが作業パッケージ表と一致しません（ganttコマンドで再生成してください）: {wbs_relative}")
+
+    seen_works: set[str] = set()
+    rows = close_gate.plan_work_rows(text)
+    if planning_status == "approved" and not rows:
+        add(findings, "error", f"計画承認済みですが今回始めるWorkがありません: {request_id}")
+    for row in rows:
+        if len(row) != 9:
+            add(findings, "error", f"進行計画の今回始めるWorkの列数が不正です: {row[0]}")
+            continue
+        order, _, plan_id, _, _, _, _, state, work_id = row
+        if plan_id not in nodes:
+            add(findings, "error", f"進行計画の計画項目IDがWBSにありません: {order}: {plan_id}")
+        if state not in close_gate.PLAN_WORK_STATES:
+            add(findings, "error", f"進行計画のWorkの状態が不正です: {order}")
+            continue
+        if work_id == "未発行":
+            if state not in {"未着手", "中止"}:
+                add(findings, "error", f"開始済みの行にWork IDがありません: {order}")
+            continue
+        if state == "未着手":
+            add(findings, "error", f"未着手の行にWork IDがあります: {order}")
+        if not ID_PATTERNS["work"].fullmatch(work_id) or work_id in seen_works:
+            add(findings, "error", f"進行計画のWork IDが不正または重複しています: {work_id}")
+            continue
+        seen_works.add(work_id)
+        scope = works.get(work_id)
+        if not scope:
+            add(findings, "error", f"進行計画のWork IDに実体がありません: {work_id}")
+            continue
+        if scope.get("plan_item_id") != plan_id:
+            add(findings, "error", f"進行計画とWorkの計画項目IDが一致しません: {work_id}")
+        expected = {"完了": {"completed"}, "中止": {"cancelled"}}.get(state, {"active", "on_hold", "handoff"})
+        if scope.get("record_status") not in expected:
+            add(findings, "error", f"進行計画の行の状態とWork状態が一致しません: {work_id}")
 
 
 def check_wbs(text: str, plan_ids: set[str], findings: list[Finding]) -> None:
@@ -873,7 +1037,9 @@ def check_work_record(work_dir: Path, root: Path, findings: list[Finding]) -> No
     if requests:
         rq = read_frontmatter(requests[0])
         plan = root / rq.get("plan_file", "none")
-        if plan.is_file():
+        if plan.is_file() and read_frontmatter(plan).get("plan_format") == "split":
+            pass  # WBSの紐づくWork・進行計画の行との照合はcheck_split_planで行う
+        elif plan.is_file():
             rows = [r for r in close_gate.table_rows(section_text(read_text(plan), "## Work候補")) if len(r) == 10 and r[0] == plan_item and r[9] == directory_id]
             if len(rows) != 1:
                 add(findings, "error", f"Workのplan_item_idが計画の対応と一致しません: {relative_dir}")
@@ -1115,6 +1281,11 @@ def check_knowledge(root: Path, findings: list[Finding]) -> None:
 
 
 def check_context_records(root: Path, findings: list[Finding]) -> None:
+    # 登録時は解消作業を「未割当（Plan）」にでき、計画承認後に計画項目IDへ付け替える（IMP-005）。
+    planned_request_ids = {
+        meta.get("request_id", "") for path in (root / "02_CT_管理/依頼").glob("RQ-*.md")
+        if (meta := read_frontmatter(path)).get("planning_status") == "approved"
+    }
     legacy: dict[str, int] = {}
     types: set[str] = set()
     for path in context_paths(root):
@@ -1134,6 +1305,10 @@ def check_context_records(root: Path, findings: list[Finding]) -> None:
                 for field in ("resolution_task_ref", "required_by", "impact"):
                     if not attrs.get(field):
                         add(findings, "error", f"未確認Contextの{field}がありません: {item_id}")
+                scope_ids = set(ID_PATTERNS["request"].findall(attrs.get("applies_to", "")))
+                targets = planned_request_ids if attrs.get("applies_to") == "project" else scope_ids & planned_request_ids
+                if attrs.get("resolution_task_ref", "").startswith(UNASSIGNED_TASK_REF) and targets:
+                    add(findings, "warning", f"計画承認後も解消作業が未割当です（Planで計画項目IDを割り当ててください）: {item_id}")
             if attrs.get("knowledge_state") in {"unknown", "conflict"} or attrs.get("approval_state") == "pending":
                 if attrs.get("blocking") not in {"true", "false"}:
                     add(findings, "error", f"Contextのblockingが未設定または不正です: {item_id}")
@@ -1205,6 +1380,11 @@ def check_indexes(root: Path, findings: list[Finding]) -> None:
             add(findings, "error", f"対応する現行依頼がない進行計画です: {relative}")
             continue
         _, request_metadata = request_by_id[request_id]
+        if plan_metadata.get("document_type") == "request_wbs":
+            linked_plan = root / request_metadata.get("plan_file", "none")
+            if not linked_plan.is_file() or read_frontmatter(linked_plan).get("wbs_file") != relative:
+                add(findings, "error", f"進行計画から参照されていないWBSです: {relative}")
+            continue
         if request_metadata.get("plan_file") != relative:
             add(findings, "error", f"依頼から参照されていない進行計画です: {relative}")
 
@@ -1433,7 +1613,7 @@ def check_request_archive_cleanup(root: Path, request_dir: Path, request_id: str
         add(findings, "error", f"依頼一覧の終了索引が不足しています: {request_id}")
     elif not any(row[1] == rows[0][8] and row[2] == "request" for row in mappings):
         add(findings, "error", f"依頼一覧のアーカイブ参照が一致しません: {request_id}")
-    request_files = [path for path in request_dir.glob(f"{request_id}_*.md") if "_進行計画" not in path.stem]
+    request_files = [path for path in request_dir.glob(f"{request_id}_*.md") if "_進行計画" not in path.stem and not path.stem.endswith("_WBS")]
     if len(request_files) == 1:
         expected_path = nfc(request_files[0].relative_to(root).as_posix())
         if expected_path not in mapped_destinations or (len(rows) == 1 and len(rows[0]) >= 9 and rows[0][8] != expected_path):
@@ -1462,7 +1642,7 @@ def check_request_archive(root: Path, request_dir: Path, findings: list[Finding]
     request_id_match = ID_PATTERNS["request"].search(request_dir.name)
     request_id = request_id_match.group(0) if request_id_match else "RQ不明"
     request_files = list(request_dir.glob(f"{request_id}_*.md"))
-    request_files = [path for path in request_files if "_進行計画" not in path.stem]
+    request_files = [path for path in request_files if "_進行計画" not in path.stem and not path.stem.endswith("_WBS")]
     if len(request_files) != 1:
         add(findings, "error", f"依頼MDは1件必要です: {request_dir.relative_to(root)}")
     elif (metadata := read_frontmatter(request_files[0])) and metadata.get("planning_status") in {"approved", "needs_revision"}:
@@ -1473,6 +1653,11 @@ def check_request_archive(root: Path, request_dir: Path, findings: list[Finding]
             plan_relative = nfc(plan_files[0].relative_to(root).as_posix())
             if metadata.get("plan_file") != plan_relative:
                 add(findings, "error", f"アーカイブ依頼のplan_fileが移動先と一致しません: {request_id}")
+            plan_meta = read_frontmatter(plan_files[0])
+            if plan_meta.get("plan_format") == "split":
+                wbs_relative = nfc((request_dir / f"{request_id}_WBS.md").relative_to(root).as_posix())
+                if not (root / wbs_relative).is_file() or plan_meta.get("wbs_file") != wbs_relative:
+                    add(findings, "error", f"アーカイブ進行計画のwbs_fileが移動先と一致しません: {request_id}")
     if not (request_dir / "終了サマリ.md").is_file():
         add(findings, "error", f"終了サマリ.mdがありません: {request_dir.relative_to(root)}")
     else:
@@ -1640,12 +1825,14 @@ def main() -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table", "verify-request-close"),
+    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table", "verify-request-close", "gantt"),
                         default="check")
     parser.add_argument("--root", default=".", help="案件ワークスペースのルート")
     parser.add_argument("--strict", action="store_true", help="エラーがあれば終了コード1を返す")
     parser.add_argument("--work", help="対象Workのルート相対パス")
     parser.add_argument("--request", help="verify-request-close: 対象依頼のRQ-ID")
+    parser.add_argument("--wbs", help="gantt: 対象WBSのルート相対パス")
+    parser.add_argument("--write", action="store_true", help="gantt: WBSの生成区間を書き換える")
     parser.add_argument("--phase", choices=("before", "resume", "after"), default="before")
     parser.add_argument("--target", action="append", default=[], metavar="参照=work:終了反映案/…",
                         help="version-table: 変更する正本と承認用内容（複数指定可）")
@@ -1653,6 +1840,22 @@ def main() -> int:
                         help="version-table: 削除する正本（複数指定可）")
     args = parser.parse_args()
     root = Path(args.root).resolve()
+    if args.command == "gantt":
+        if not args.wbs:
+            parser.error("--wbs が必要です")
+        wbs_path = (root / args.wbs).resolve()
+        if not wbs_path.is_relative_to(root) or not wbs_path.is_file():
+            parser.error(f"WBSが見つかりません: {args.wbs}")
+        text = read_text(wbs_path)
+        if close_gate.gantt_block(text) is None:
+            print("WBSにガントの生成区間（<!-- gantt:start --> と <!-- gantt:end -->）がありません")
+            return 1
+        if args.write:
+            wbs_path.write_text(close_gate.with_gantt(text, close_gate.wbs_title(text)), encoding="utf-8")
+            print(f"ガントを更新しました: {args.wbs}")
+        else:
+            print("\n".join(close_gate.render_gantt(text, close_gate.wbs_title(text))))
+        return 0
     if args.command == "verify-request-close":
         if not args.request or not ID_PATTERNS["request"].fullmatch(args.request):
             parser.error("--request RQ-xxxx が必要です")

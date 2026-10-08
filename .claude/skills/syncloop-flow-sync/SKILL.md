@@ -29,7 +29,7 @@ work-close-contract.mdを読み、その手順と版検証を実施する。終�
 
 検証成功後だけapplyingにして承認用targetを適用し、候補同期・全Work文書の状態・完了フォルダ移動・関連参照・計画の消化状態・CTの4台帳を揃える。after検証が成功したらsyncedと実日時を記録し、共通検査を実行する。候補ゼロも同じ完了経路を使う。想定外の差分や不足は完了確定を止め、具体的な箇所を示す。
 
-終了判断で指定されたnext_action・対象・理由を案内する。continue_workは未開始P-IDならWork Start、既存W-IDならそのWorkの継続、plan_remaining/replanはPlan、request_closeはRequest Close、resolve_blockerは不足確認を案内する。plan_remainingでは未計画の具体範囲と使うWork結果を示す。Closeの再依頼や一律のPlanレビューは要求しない。
+終了判断で指定されたnext_action・対象・理由を案内する。continue_workは進行計画の未着手の行（P-ID）ならWork Start、既存W-IDならそのWorkの継続、plan_remainingはPlanで次の区切りの進行計画（区切り承認）、replanはPlanでWBSの見直し（Plan承認）、request_closeはRequest Close、resolve_blockerは不足確認を案内する。plan_remainingでは未計画の具体範囲と使うWork結果を示す。Closeの再依頼や一律のPlanレビューは要求しない。
 
 ## Context配置の保守と確認
 
