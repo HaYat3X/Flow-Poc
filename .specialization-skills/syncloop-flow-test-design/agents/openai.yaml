@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：テストケース設計"
+  short_description: "根拠付きの画面テストケース案を検査・出力する"
+  default_prompt: "Use $syncloop-flow-test-design to prepare approved black-box test cases for a started Work without modifying source artifacts."
+policy:
+  allow_implicit_invocation: false

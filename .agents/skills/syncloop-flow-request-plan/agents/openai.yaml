@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：依頼進行計画"
+  short_description: "全体の到達点と部分計画・残りの範囲を具体化するための共通手順"
+  default_prompt: "Use $syncloop-flow-request-plan to approve a full or partial plan and extend remaining unplanned scope."
+policy:
+  allow_implicit_invocation: true

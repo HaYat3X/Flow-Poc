@@ -1,0 +1,31 @@
+{
+  "estimate_method": "activities",
+  "project": {
+    "customer_name": "サンプル顧客",
+    "project_name": "要件定義の参考試算",
+    "contract_type": "準委任",
+    "estimate_type": "参考",
+    "estimate_department": "第３システム部",
+    "work_phase": "要件定義",
+    "period": "3か月（仮定）",
+    "cost_department": "3375",
+    "cost_year": 2025,
+    "scope": "業務ヒアリング、要件資料の作成・レビュー",
+    "exclusions": "設計・開発、稼働支援",
+    "customer_tasks": "ヒアリングへの参加、現行資料の提供、要件の確認",
+    "change_policy": "回数・対象範囲の追加は別途協議",
+    "billing_terms": "準委任。精算条件は未確認",
+    "assumptions": ["仮の活動内訳。実案件の見積ではない。", "2025年度参考単価を使用。"]
+  },
+  "wbs": [
+    {"phase": "要件定義", "task_name": "業務ヒアリング", "role": "SE", "quantity": 6, "unit_hours": 2, "people": 2, "basis": "6回、各2時間、SE2人の仮定"},
+    {"phase": "要件定義", "task_name": "事前準備・議事録・資料反映", "role": "SE", "quantity": 6, "unit_hours": 4, "basis": "打合せ1回あたり4時間の仮定"},
+    {"phase": "要件定義", "task_name": "要件資料作成・レビュー", "role": "SE", "quantity": 1, "unit_hours": 32, "basis": "対象業務の資料作成とレビューの仮定"},
+    {"phase": "プロジェクト管理", "task_name": "進捗・課題管理", "role": "SE", "quantity": 3, "unit_hours": 4, "basis": "月4時間、3か月の仮定"}
+  ],
+  "allocation": [
+    {"rank": "SE作業3", "role": "SE", "hours": 80, "basis": "要件定義活動の合計"},
+    {"rank": "PJ管理費", "role": "SE", "hours": 12, "basis": "管理活動の合計"}
+  ],
+  "pricing": {"gross_margin_rate": 0.45, "outsourcing_cost": 0, "other_expenses": 0, "auto_overheads": false}
+}

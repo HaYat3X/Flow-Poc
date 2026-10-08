@@ -1,0 +1,27 @@
+{
+  "approval_status": "approved",
+  "target": {"name": "member_task_mock.html", "version": "2026-08-14 PM承認版", "test_level": "画面ブラックボックステスト"},
+  "requirements": [
+    {"id": "REQ-01", "description": "メンバーを追加・選択・削除できる", "scope": "対象", "evidence": [{"source": "プロジェクト概要.md", "detail": "対象範囲: メンバー管理", "kind": "要件"}]},
+    {"id": "REQ-02", "description": "メンバーごとにタスクのタイトルとステータスを管理できる", "scope": "対象", "evidence": [{"source": "プロジェクト概要.md", "detail": "成功条件", "kind": "要件"}]},
+    {"id": "REQ-03", "description": "資料連携と外部連携は行わない", "scope": "対象外", "evidence": [{"source": "プロジェクト概要.md", "detail": "対象外・外部連携", "kind": "要件"}]},
+    {"id": "REQ-04", "description": "入力値の最大長と重複許可条件", "scope": "対象", "evidence": [{"source": "プロジェクト概要.md", "detail": "未確定事項: 最小機能の詳細", "kind": "要件"}]}
+  ],
+  "viewpoints": [
+    {"requirement_id": "REQ-01", "name": "正常", "decision": "採用", "reason": "メンバー管理が対象範囲である"},
+    {"requirement_id": "REQ-01", "name": "削除", "decision": "採用", "reason": "HTMLモックの確認対象に削除が明示されている"},
+    {"requirement_id": "REQ-02", "name": "正常", "decision": "採用", "reason": "タスク管理が対象範囲である"},
+    {"requirement_id": "REQ-02", "name": "必須入力", "decision": "採用", "reason": "HTMLモックに未入力メッセージがある"},
+    {"requirement_id": "REQ-03", "name": "正常", "decision": "対象外", "reason": "PoCの対象外"},
+    {"requirement_id": "REQ-04", "name": "境界値", "decision": "要確認", "reason": "上限と重複条件に上位根拠がない"}
+  ],
+  "test_cases": [
+    {"id": "TC-001", "requirement_ids": ["REQ-01"], "screen_feature": "メンバー画面 / メンバー追加", "category": "正常", "purpose": "メンバーを追加して選択状態にできることを確認する", "preconditions": "メンバー画面を表示している", "steps": ["メンバー画面で「追加」を選択する", "メンバー追加ダイアログのメンバー名に「田中」を入力する", "メンバー追加ダイアログで「追加」を選択する"], "input_values": "メンバー名: 田中", "expected_result": "メンバー一覧に「田中」が表示され、「田中」のタスク管理画面が表示される", "evidence": [{"source": "プロジェクト概要.md", "detail": "対象範囲: メンバー管理", "kind": "要件"}, {"source": "member_task_mock.html", "detail": "saveMemberButtonの追加処理", "kind": "実装"}], "confidence": "確定"},
+    {"id": "TC-002", "requirement_ids": ["REQ-01"], "screen_feature": "メンバー画面 / メンバー削除", "category": "取消", "purpose": "削除確認を取り消した場合にメンバーが残ることを確認する", "preconditions": "メンバー画面で「竹田」を選択している", "steps": ["メンバー画面で「メンバー削除」を選択する", "削除確認ダイアログで「キャンセル」を選択する"], "input_values": "なし", "expected_result": "「竹田」がメンバー一覧に残り、タスク管理画面が表示されたままになる", "evidence": [{"source": "プロジェクト概要.md", "detail": "対象範囲: メンバー管理", "kind": "要件"}, {"source": "member_task_mock.html", "detail": "deleteMemberButtonのconfirm処理", "kind": "実装"}], "confidence": "確定"},
+    {"id": "TC-003", "requirement_ids": ["REQ-02"], "screen_feature": "タスク画面 / タスク追加", "category": "正常", "purpose": "選択中メンバーにタスクを追加できることを確認する", "preconditions": "メンバー画面で「竹田」を選択している", "steps": ["タスク画面で「タスク追加」を選択する", "タスク追加ダイアログのタイトルに「設計確認」を入力する", "タスク追加ダイアログのステータスで「未着手」を選択する", "タスク追加ダイアログで「追加」を選択する"], "input_values": "タイトル: 設計確認、ステータス: 未着手", "expected_result": "「竹田」のタスク一覧に「設計確認」と「未着手」が表示される", "evidence": [{"source": "プロジェクト概要.md", "detail": "対象範囲: タスク管理（タイトル・ステータス）", "kind": "要件"}, {"source": "member_task_mock.html", "detail": "saveTaskButtonの追加処理", "kind": "実装"}], "confidence": "確定"},
+    {"id": "TC-004", "requirement_ids": ["REQ-02"], "screen_feature": "タスク画面 / タスク追加", "category": "必須入力", "purpose": "タイトル未入力ではタスクを追加できないことを確認する", "preconditions": "メンバー画面で「竹田」を選択している", "steps": ["タスク画面で「タスク追加」を選択する", "タスク追加ダイアログのタイトルを空欄にする", "タスク追加ダイアログで「追加」を選択する"], "input_values": "タイトル: 空欄", "expected_result": "「タスクタイトルを入力してください。」が表示され、タスク一覧の件数が増えない", "evidence": [{"source": "プロジェクト概要.md", "detail": "対象範囲: タスク管理", "kind": "要件"}, {"source": "member_task_mock.html", "detail": "saveTaskButtonの未入力メッセージ", "kind": "実装"}], "confidence": "確定"}
+  ],
+  "unresolved_items": [
+    {"requirement_id": "REQ-04", "item": "タイトル・メンバー名の最大文字数と同名・同一タイトルの扱い", "reason": "要件・承認済み設計に定義がないため、境界値・重複ケースを確定できない"}
+  ]
+}

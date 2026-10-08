@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：案件の取り決め整理"
+  short_description: "受託条件明細の本文案と、根拠付きの確認事項・レビュー結果を作る"
+  default_prompt: "Use $syncloop-arrange-project-conditions only when explicitly invoked by the user. Require an explicitly specified started Work folder, registered inputs with their scope, and output paths and formats inside that Work. If any specification is missing or invalid, ask for it and stop without creating or updating files, folders, logs, or Work records. Produce two requested deliverables: a readable Markdown draft of the project engagement conditions and a separate evidence-based review with open items. Use prose and tables for scope, assumptions, responsibilities, deliverables, completion criteria, schedule, changes, environment, and decision authority. Mark unresolved or conflicting terms and proposed wording in the draft itself; never silently resolve them. Preserve evidence and distinguish facts, proposals, approvals, and stakeholder agreements in the review. Cross-check the two deliverables and report both output paths. Create only explicitly requested outputs, maintain required Work records after the execution gate, and do not generate Excel or execution-ready contracts or modify originals or authoritative project records."
+policy:
+  allow_implicit_invocation: false

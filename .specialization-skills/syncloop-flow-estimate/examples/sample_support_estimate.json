@@ -1,0 +1,29 @@
+{
+  "estimate_method": "staffing",
+  "project": {
+    "customer_name": "サンプル顧客",
+    "project_name": "稼働支援の参考試算",
+    "contract_type": "準委任",
+    "estimate_type": "参考",
+    "estimate_department": "第３システム部",
+    "work_phase": "稼働支援",
+    "period": "2か月（仮定）",
+    "cost_department": "3375",
+    "cost_year": 2025,
+    "scope": "操作支援、問い合わせ一次対応",
+    "exclusions": "機能追加、夜間・休日の対応",
+    "customer_tasks": "問い合わせの集約、支援対象者の調整",
+    "change_policy": "対応枠を超える作業は追加契約を協議",
+    "billing_terms": "準委任。月額・時間精算の選択と精算幅は未確認",
+    "assumptions": ["体制・稼働率・月間160時間は説明用の仮定。標準値ではない。", "2025年度参考単価を使用。", "SEの体制には管理業務を含む仮定のため管理工数を追加しない。"]
+  },
+  "staffing": [
+    {"phase": "稼働支援", "task_name": "SE支援枠（管理業務を含む）", "role": "SE", "people": 1, "utilization": 0.5, "months": 2, "hours_per_month": 160, "basis": "SE1人を50%で2か月確保する仮定"},
+    {"phase": "稼働支援", "task_name": "PG調査支援枠", "role": "PG", "people": 1, "utilization": 0.25, "months": 2, "hours_per_month": 160, "basis": "PG1人を25%で2か月確保する仮定"}
+  ],
+  "allocation": [
+    {"rank": "SE作業3", "role": "SE", "hours": 160, "basis": "SE支援枠の算出工数"},
+    {"rank": "PG作業2", "role": "PG", "hours": 80, "basis": "PG支援枠の算出工数"}
+  ],
+  "pricing": {"gross_margin_rate": 0.45, "outsourcing_cost": 0, "other_expenses": 0, "auto_overheads": false}
+}

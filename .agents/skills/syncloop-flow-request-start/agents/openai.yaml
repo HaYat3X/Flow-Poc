@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：Request Start"
+  short_description: "依頼を登録し案件概要をContextとして育て始める"
+  default_prompt: "Use $syncloop-flow-request-start to register a request and initialize or update its project Context."
+policy:
+  allow_implicit_invocation: true

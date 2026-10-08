@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Syncloop Flow Markdown見積データ",
+  "type": "object",
+  "required": ["project"],
+  "properties": {
+    "approval_status": {
+      "type": "string",
+      "enum": ["draft", "approved"]
+    },
+    "estimate_method": {"type": "string", "enum": ["functions", "activities", "staffing", "hybrid"], "default": "functions"},
+    "project": {
+      "type": "object",
+      "required": ["customer_name", "project_name", "contract_type", "estimate_type"],
+      "properties": {
+        "estimate_date": {"type": "string"},
+        "contract_type": {"type": "string", "minLength": 1},
+        "estimate_type": {"type": "string", "minLength": 1},
+        "management_number": {"type": "string"},
+        "customer_name": {"type": "string", "minLength": 1},
+        "project_name": {"type": "string", "minLength": 1},
+        "estimate_department": {"type": "string"},
+        "solution": {"type": "string"},
+        "work_phase": {"type": "string"},
+        "period": {"type": "string"},
+        "cost_year": {"type": "integer"},
+        "cost_department": {"type": "string", "const": "3375"},
+        "scope": {"type": "string"},
+        "exclusions": {"type": "string"},
+        "customer_tasks": {"type": "string"},
+        "change_policy": {"type": "string"},
+        "billing_terms": {"type": "string"},
+        "assumptions": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["function_name", "function_type", "difficulty", "basis"],
+        "properties": {
+          "function_name": {"type": "string", "minLength": 1},
+          "description": {"type": "string"},
+          "change_type": {"type": "string"},
+          "language": {"type": "string"},
+          "function_type": {"type": "string", "enum": ["画面", "帳票", "バッチ"]},
+          "difficulty": {"type": "number", "minimum": 0},
+          "basis": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "wbs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["phase", "task_name", "role", "quantity", "unit_hours", "basis"],
+        "properties": {
+          "phase": {"type": "string", "minLength": 1},
+          "task_name": {"type": "string", "minLength": 1},
+          "role": {"type": "string", "enum": ["SE", "PG"]},
+          "quantity": {"type": "number", "minimum": 0},
+          "unit_hours": {"type": "number", "minimum": 0},
+          "people": {"type": "number", "exclusiveMinimum": 0},
+          "rounding": {"type": "string", "enum": ["half_hour", "none"], "default": "half_hour"},
+          "basis": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "staffing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_name", "role", "people", "utilization", "months", "hours_per_month", "basis"],
+        "properties": {
+          "phase": {"type": "string", "minLength": 1},
+          "task_name": {"type": "string", "minLength": 1},
+          "role": {"type": "string", "enum": ["SE", "PG"]},
+          "people": {"type": "number", "exclusiveMinimum": 0},
+          "utilization": {"type": "number", "minimum": 0, "maximum": 1},
+          "months": {"type": "number", "exclusiveMinimum": 0},
+          "hours_per_month": {"type": "number", "exclusiveMinimum": 0},
+          "basis": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "allocation": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["rank", "role", "hours", "basis"],
+        "properties": {
+          "rank": {"type": "string", "enum": ["SE作業4", "SE作業3", "SE作業2", "SE作業1", "PG作業4", "PG作業3", "PG作業2", "PG作業1", "PJ管理費", "予備工数"]},
+          "role": {"type": "string", "enum": ["SE", "PG"]},
+          "hours": {"type": "number", "minimum": 0},
+          "hourly_rate": {"type": "number", "minimum": 0, "description": "案件指定の原価単価。省略時は確認済み年度の第3システム部マスタを使用"},
+          "basis": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "required": ["gross_margin_rate", "outsourcing_cost", "other_expenses"],
+      "properties": {
+        "gross_margin_rate": {"type": "number", "minimum": 0, "exclusiveMaximum": 1},
+        "outsourcing_cost": {"type": "number", "minimum": 0},
+        "other_expenses": {"type": "number", "minimum": 0},
+        "auto_overheads": {"type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"estimate_method": {"enum": ["functions", "hybrid"]}}},
+      "then": {"required": ["functions"], "properties": {"functions": {"minItems": 1}}}
+    },
+    {
+      "if": {"required": ["estimate_method"], "properties": {"estimate_method": {"const": "activities"}}},
+      "then": {"required": ["wbs"], "properties": {"wbs": {"minItems": 1}, "functions": {"maxItems": 0}, "staffing": {"maxItems": 0}}}
+    },
+    {
+      "if": {"required": ["estimate_method"], "properties": {"estimate_method": {"const": "staffing"}}},
+      "then": {"required": ["staffing"], "properties": {"staffing": {"minItems": 1}, "functions": {"maxItems": 0}, "wbs": {"maxItems": 0}}},
+      "else": {"properties": {"staffing": {"maxItems": 0}}}
+    }
+  ],
+  "additionalProperties": false
+}

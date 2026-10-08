@@ -1,0 +1,52 @@
+{
+  "estimate_method": "hybrid",
+  "project": {
+    "estimate_date": "2026-08-31",
+    "customer_name": "PoCテスト顧客",
+    "project_name": "見積自動化PoC",
+    "contract_type": "請負",
+    "estimate_type": "概算",
+    "estimate_department": "第３システム部",
+    "work_phase": "設計・開発",
+    "cost_department": "3375",
+    "cost_year": 2025,
+    "assumptions": ["PoC用の仮入力。実案件の値ではない。", "2025年度参考単価による試算。2026年度の確定単価ではない。"]
+  },
+  "functions": [
+    {
+      "function_name": "ログイン画面",
+      "function_type": "画面",
+      "difficulty": 3,
+      "basis": "PoC用の仮入力"
+    }
+  ],
+  "wbs": [
+    {
+      "phase": "運用テスト",
+      "task_name": "受入テスト不具合対応",
+      "role": "PG",
+      "quantity": 1,
+      "unit_hours": 4,
+      "basis": "PoC用の追加作業"
+    }
+  ],
+  "allocation": [
+    {
+      "rank": "SE作業3",
+      "role": "SE",
+      "hours": 2.5,
+      "basis": "内部設計とレビュー"
+    },
+    {
+      "rank": "PG作業2",
+      "role": "PG",
+      "hours": 8.5,
+      "basis": "開発・テストと運用テスト"
+    }
+  ],
+  "pricing": {
+    "gross_margin_rate": 0.45,
+    "outsourcing_cost": 0,
+    "other_expenses": 0
+  }
+}

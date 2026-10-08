@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：見積もり支援"
+  short_description: "案件に合う方式で工数・SE／PG原価を算出し、転記しやすいMDを作る"
+  default_prompt: "Use $syncloop-flow-estimate only after the user explicitly specifies a started Work folder, the estimate input, and an output folder inside that Work. If any specification is missing, ask for it and stop before calculation or file creation; do not substitute sample inputs or an unsaved estimate. Verify the input is registered in the Work input list. Generate a draft Markdown estimate using phase-appropriate effort estimation, existing Excel calculation rules, and the third systems department cost master without modifying the original workbook."
+policy:
+  allow_implicit_invocation: false
