@@ -113,9 +113,10 @@ Workの `C-CTX-xxx` 候補は、自由記述の反映先パスではなく、次
 
 ## 6. unknown／conflictのWork側扱い
 
-- `blocking: true` がある場合、関連Workの開始・計画承認を止める。
+- `blocking: true` がある場合、その値に依存するWorkの開始を止める。その項目を解消・確認するための作業（`resolution_task_ref` が指す計画項目・Work）と、解消作業を割り当てる計画承認は止めない。
 - `blocking: false` の場合、`assumption` または `unknown` を前提として作業継続可とするが、前提IDをWork入力に記録する。
-- `conflict` は指定がなければ常に `blocking` として扱う。継続時のみ例外とし、`working_assumption` と `working_assumption_ref` を記録する。
+- `conflict` は指定がなければ常に `blocking` として扱う（上の解消作業の例外は同じ）。依存するWorkを先に進める場合だけ、`working_assumption` と `working_assumption_ref` を記録する。
+- 作業上の前提（`working_assumption`）の採用は案件の判断であり、CX 10の判断権限者、未設定ならPMが承認する。依頼の登録・改訂、計画、Workの承認で兼ねてよいが、承認案の判断点に「案件の判断:」で始まる別の行として示し、承認記録の見出しを `working_assumption_ref` に記録する（project-record-updates.md「承認と更新」）。
 - `required_by` を過ぎた `unknown`／`conflict` は現在地の判断待ちへ上げる。
 - Work開始後に `blocking` 項目が発生した場合は中断・継続判断を行う。継続にはPM承認と前提IDの記録を必須とし、判断と根拠を作業メモ＋CT更新履歴に残す。
 
