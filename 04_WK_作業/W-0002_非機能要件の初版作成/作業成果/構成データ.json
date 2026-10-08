@@ -1,0 +1,143 @@
+{
+  "title": "備品管理アプリ システム構成（初版）",
+  "zones": [
+    {
+      "id": "client_net",
+      "label": "顧客 社内・工場ネットワーク（社内LAN／VPN経由、インターネット非公開）",
+      "kind": "network"
+    },
+    {
+      "id": "azure",
+      "label": "Azure（東日本リージョン、顧客既存契約）",
+      "kind": "server"
+    },
+    {
+      "id": "outside",
+      "label": "社外・外部サービス",
+      "kind": "external"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "pc",
+      "zone": "client_net",
+      "kind": "client",
+      "status": "確認済み",
+      "col": 0,
+      "row": 0,
+      "label": "事務所PC\nEdge／Chrome\n総務 登録80名(実働30名)"
+    },
+    {
+      "id": "phone",
+      "zone": "client_net",
+      "kind": "client",
+      "status": "確認済み",
+      "col": 0,
+      "row": 1,
+      "label": "工場 会社支給iPhone 約30台\n(Intune管理、私物不可)\n第一工場25名／第二工場15名"
+    },
+    {
+      "id": "warehouse",
+      "zone": "client_net",
+      "kind": "client",
+      "status": "未確認",
+      "col": 0,
+      "row": 2,
+      "label": "第二工場倉庫（電波届かず）\nオフライン読み取り要否（未確認）"
+    },
+    {
+      "id": "vpn",
+      "zone": "client_net",
+      "kind": "boundary",
+      "status": "確認済み",
+      "col": 1,
+      "row": 0,
+      "label": "社内LAN／VPN接続\nFW・ポート制御は情シス"
+    },
+    {
+      "id": "app",
+      "zone": "azure",
+      "kind": "app",
+      "status": "未確認",
+      "col": 2,
+      "row": 0,
+      "label": "Webアプリ基盤\nAzure東日本リージョン\nOS・スペックは未確認"
+    },
+    {
+      "id": "db",
+      "zone": "azure",
+      "kind": "data",
+      "status": "未確認",
+      "col": 2,
+      "row": 1,
+      "label": "データベース\n（構成は未確認）"
+    },
+    {
+      "id": "backup",
+      "zone": "azure",
+      "kind": "data",
+      "status": "未確認",
+      "col": 2,
+      "row": 2,
+      "label": "バックアップ\n社内標準は日次14世代\n保管先・世代は構成確定後に相談"
+    },
+    {
+      "id": "log",
+      "zone": "azure",
+      "kind": "data",
+      "status": "未確認",
+      "col": 3,
+      "row": 1,
+      "label": "操作ログ・変更履歴\n保持年数未確認（5年／7年）"
+    },
+    {
+      "id": "entra",
+      "zone": "outside",
+      "kind": "external",
+      "status": "確認済み",
+      "col": 4,
+      "row": 0,
+      "label": "Microsoft Entra ID\n(Microsoft 365 SSO・MFA必須)\n認証ログ1年保持"
+    },
+    {
+      "id": "zabbix",
+      "zone": "outside",
+      "kind": "external",
+      "status": "確認済み",
+      "col": 4,
+      "row": 1,
+      "label": "情シス監視ツール（Zabbix）\n死活・HTTP応答確認のみ"
+    },
+    {
+      "id": "asset_system",
+      "zone": "outside",
+      "kind": "external",
+      "status": "未確認",
+      "col": 4,
+      "row": 2,
+      "label": "固定資産台帳／資産管理ツール\n連携要否は未確認（第2段階）"
+    },
+    {
+      "id": "maint",
+      "zone": "outside",
+      "kind": "external",
+      "status": "未確認",
+      "col": 4,
+      "row": 3,
+      "label": "保守端末（自社）\n接続方法・承認フローは未確認"
+    }
+  ],
+  "links": [
+    { "from": "pc", "to": "vpn", "label": "HTTPS" },
+    { "from": "phone", "to": "vpn" },
+    { "from": "warehouse", "to": "vpn", "style": "dashed" },
+    { "from": "vpn", "to": "app", "label": "HTTPS" },
+    { "from": "app", "to": "db", "label": "DB接続" },
+    { "from": "app", "to": "backup", "style": "dashed" },
+    { "from": "app", "to": "log" },
+    { "from": "app", "to": "entra", "label": "SSO・MFA" },
+    { "from": "app", "to": "zabbix", "style": "dashed" },
+    { "from": "app", "to": "asset_system", "style": "dashed" },
+    { "from": "maint", "to": "vpn", "label": "リモート保守（未確認）", "style": "dashed", "route": "bottom" }
+  ]
+}
