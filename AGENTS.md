@@ -18,9 +18,10 @@
 
 ## Skillの利用
 
-- `.agents/skills/` に常設された共通Skillは、利用者の自然言語または明示的な `$skill-name` 指定に合致したときに使用する。
+- `.agents/skills/` に常設された共通Skillは、利用者の自然言語または明示的なSkill名の指定に合致したときに使用する。名前の指定はツールで書き方が違う。Codexは `$syncloop-flow-…`、Claude Code（ターミナル・IDE）は `/syncloop-flow-…`。Claudeのプロジェクト・チャットでは `/` の候補に出ないため、自然言語で頼む（例「Request Startを回して」）。どの場面でも自然言語で選べる。
+- Skill・Policyの正本は `.agents/` とする。`.claude/skills/` と `.claude/rules/` はClaude Code用の写しで直接編集せず、`.agents/` を変えたら `.tools/project_workflow_check.py sync-claude` で作り直す。写しのずれは共通検査がエラーにする。
 - `.specialization-skills/` は特化Skillの非アクティブな保管場所であり、通常の作業では読取・探索・提案・実行の対象にしない。
-- 特化Skillは、利用者がSkill名を指定して配置を依頼した場合に限り、対象ディレクトリ一式を `.agents/skills/` へ配置する。配置後も、利用者がその都度 `$skill-name` を明示した場合だけ実行する。共通Skillから特化Skillを提案または呼び出さない。
+- 特化Skillは、利用者がSkill名を指定して配置を依頼した場合に限り、対象ディレクトリ一式を `.agents/skills/` へ配置する。配置後も、利用者がその都度Skill名を明示した場合だけ実行する。共通Skillから特化Skillを提案または呼び出さない。
 - Skillが選択されたことは、業務上の確定・正式化・終了・アーカイブの承認を意味しない。
 - 読み取りと変更案の作成は進めてよい。確定Context・意思決定・リスク・課題・Knowledgeへの反映、Work・依頼の終了、アーカイブは、具体的な判断案を示して利用者またはPMの承認を得てから実行する。
 - 利用者またはPMが対象と操作を特定して実行を依頼した場合は、その依頼を承認とみなし、同じ内容の再承認を求めない。対象、影響範囲、不可逆な操作に不明点がある場合だけ確認する。
