@@ -101,6 +101,80 @@ def plan_work_rows(text: str) -> list[list[str]]:
     return [r for r in table_rows(section(text, PLAN_WORK_HEADING)) if r and r[0] != "順番"]
 
 
+# 承認記録（テーマC）: 承認の対象ごとに、示した判断点と同意を1件1見出しで残す。
+APPROVAL_SUFFIX = "承認記録"
+APPROVAL_KINDS = {
+    "request": {"登録承認", "改訂承認", "前提承認"},
+    "plan": {"Plan承認", "区切り承認", "前提承認"},
+    "work": {"開始承認", "変更承認", "途中Sync承認", "前提承認"},
+}
+APPROVAL_STATES = {"提示中", "承認済み", "差し戻し"}
+
+
+def is_approval_record(path: Path) -> bool:
+    return path.stem.endswith(APPROVAL_SUFFIX)
+
+
+def request_documents(folder: Path, pattern: str) -> list[Path]:
+    """依頼・進行計画フォルダの文書から承認記録を除いて列挙する。"""
+    return sorted(path for path in folder.glob(pattern) if not is_approval_record(path))
+
+
+def approval_record_paths(root: Path, request_id: str) -> dict[str, Path]:
+    return {
+        "request": root / "02_CT_管理/依頼" / f"{request_id}_依頼{APPROVAL_SUFFIX}.md",
+        "plan": root / "02_CT_管理/進行計画" / f"{request_id}_計画{APPROVAL_SUFFIX}.md",
+    }
+
+
+def approval_entries(text: str) -> list[dict]:
+    """「## 承認の記録」の見出しごとに、種別・項目・判断点を読む。"""
+    body = section(text, "## 承認の記録")
+    entries: list[dict] = []
+    for match in re.finditer(r"^### (A-\d{2})[ \t]+([^\s（(]+)(.*)$((?:\n(?!### ).*)*)", body, re.MULTILINE):
+        fields: dict[str, str] = {}
+        points: list[str] = []
+        current = ""
+        for line in match.group(4).splitlines():
+            top = re.match(r"^- ([^:：]+)[:：]\s*(.*)$", line)
+            child = re.match(r"^\s{2,}- (.+)$", line)
+            if top:
+                current = top.group(1).strip()
+                fields[current] = top.group(2).strip()
+            elif child and current == "判断が要る点":
+                points.append(child.group(1).strip())
+        entries.append({"id": match.group(1), "kind": match.group(2), "title": match.group(2) + match.group(3),
+                        "fields": fields, "points": points})
+    return entries
+
+
+def approval_problems(entry: dict, scope: str) -> list[str]:
+    """承認記録の1件について、記載の不足を返す。"""
+    problems: list[str] = []
+    fields = entry["fields"]
+    state = fields.get("状態", "")
+    if entry["kind"] not in APPROVAL_KINDS[scope]:
+        problems.append(f"承認の種別が不正です（{'/'.join(sorted(APPROVAL_KINDS[scope]))}）")
+    if state not in APPROVAL_STATES:
+        problems.append("状態は提示中・承認済み・差し戻しのいずれかにしてください")
+    if not re.match(r"\d{4}-\d{2}-\d{2}", fields.get("提示", "")):
+        problems.append("提示の日時がありません")
+    points = [p for p in entry["points"] if p != "示した判断点を1行ずつ書く"]
+    if not points:
+        problems.append("判断が要る点がありません")
+    approval = fields.get("承認", "")
+    if state == "承認済み":
+        if not re.match(r"\d{4}-\d{2}-\d{2}", approval) or "記録の承認" not in approval:
+            problems.append("承認済みには承認の日時・承認者と立場（記録の承認）が必要です")
+        if fields.get("承認の発言", "未") in {"", "未", "「承認の発言を引用する」"}:
+            problems.append("承認済みには承認の発言が必要です")
+        if any(p.startswith("案件の判断") for p in points) and "案件の判断" not in approval:
+            problems.append("案件の判断を含む承認では、承認者が案件の判断も承認したことを記録してください")
+    if state == "差し戻し" and not fields.get("差し戻しの理由"):
+        problems.append("差し戻しには差し戻しの理由が必要です")
+    return problems
+
+
 def split_ids(value: str) -> list[str]:
     return [] if value.strip() in {"", "なし", "none"} else [v.strip() for v in value.split(",") if v.strip()]
 
@@ -411,7 +485,15 @@ def validate(work: Path, root: Path, phase: str | None = None, require_seal: boo
         for context in (root / "03_CX_コンテキスト").glob("*.md"):
             if metadata(context).get("document_type") == "project_context" and path_key(context) not in resolved_paths:
                 errors.append(f"承認対象の版に案件Contextがありません: {context.name}")
-        requests = list((root / "02_CT_管理/依頼").glob(f"{scope.get('request_id', '')}_*.md"))
+        requests = request_documents(root / "02_CT_管理/依頼", f"{scope.get('request_id', '')}_*.md")
+        for approval in [*approval_record_paths(root, scope.get("request_id", "")).values(), work / "承認記録.md"]:
+            if approval.is_file() and path_key(approval) not in resolved_paths:
+                errors.append(f"承認対象の版に承認記録がありません: {approval.name}")
+        work_approval = work / "承認記録.md"
+        if work_approval.is_file():
+            for entry in approval_entries(read_text(work_approval)):
+                if entry["fields"].get("状態") == "提示中":
+                    errors.append(f"Workの承認記録に提示中のままの承認があります: {entry['id']}")
         if len(requests) != 1:
             errors.append("終了判断の関連依頼を一意に特定できません")
         else:
@@ -523,7 +605,9 @@ def version_table_refs(work: Path, root: Path) -> list[str]:
             ref = "work:" + item.relative_to(work).as_posix()
             if item.is_file() and not item.name.startswith(".") and ref not in refs:
                 refs.append(ref)
-    requests = sorted((root / "02_CT_管理/依頼").glob(f"{scope.get('request_id', '')}_*.md"))
+    if (work / "承認記録.md").is_file():
+        refs.append("work:承認記録.md")
+    requests = request_documents(root / "02_CT_管理/依頼", f"{scope.get('request_id', '')}_*.md")
     for request in requests[:1]:
         refs.append(request.relative_to(root).as_posix())
         plan = metadata(request).get("plan_file", "none")
@@ -533,6 +617,8 @@ def version_table_refs(work: Path, root: Path) -> list[str]:
                 wbs = metadata(root / plan).get("wbs_file", "none")
                 if wbs not in {"", "none"}:
                     refs.append(wbs)
+        refs += [nfc(path.relative_to(root).as_posix())
+                 for path in approval_record_paths(root, scope.get("request_id", "")).values() if path.is_file()]
     for context in sorted((root / "03_CX_コンテキスト").glob("*.md")):
         if metadata(context).get("document_type") == "project_context":
             refs.append(context.relative_to(root).as_posix())

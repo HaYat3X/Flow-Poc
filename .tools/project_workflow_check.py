@@ -426,7 +426,7 @@ def check_document_contracts(root: Path, findings: list[Finding]) -> None:
 
 
 def check_initialized_project(root: Path, findings: list[Finding]) -> None:
-    request_paths = sorted((root / "02_CT_管理/依頼").glob("RQ-*.md"))
+    request_paths = close_gate.request_documents(root / "02_CT_管理/依頼", "RQ-*.md")
     archived_request_paths = sorted((root / "99_AX_アーカイブ/依頼").glob("RQ-*"))
     if not request_paths and not archived_request_paths:
         return
@@ -528,6 +528,13 @@ def check_initialized_project(root: Path, findings: list[Finding]) -> None:
             if len(cells) <= 8 or cells[8] != relative:
                 add(findings, "error", f"依頼一覧の依頼ファイルが実体と一致しません: {request_id}")
 
+        approval_paths = close_gate.approval_record_paths(root, request_id)
+        check_approval_record(approval_paths["request"], "request", root, findings, request_id,
+                              required_kinds={"登録承認"})
+        planned = metadata.get("planning_status") in {"approved", "needs_revision"}
+        plan_approvals = check_approval_record(approval_paths["plan"], "plan", root, findings, request_id,
+                                               required_kinds={"Plan承認"} if planned else None)
+
         request_status_section = section_text(status_text, "## 依頼ごとの現在地")
         if request_id not in request_status_section:
             add(findings, "error", f"現在地の依頼別状態に依頼がありません: {request_id}")
@@ -563,6 +570,7 @@ def check_initialized_project(root: Path, findings: list[Finding]) -> None:
                 add(findings, "error", f"依頼の進行計画MDがありません: {plan_file}")
             else:
                 check_request_plan(plan_path, request_id, planning_status, distinct_ids, root, findings)
+                check_plan_revision_approvals(plan_path, plan_approvals, root, findings)
         if planning_status and planning_status not in request_status_section:
             add(findings, "error", f"現在地と依頼frontmatterのplanning_statusが一致しません: {request_id}")
         if planning_status != "approved" and "syncloop-flow-request-plan" not in section_text(status_text, "## 次アクション"):
@@ -892,7 +900,7 @@ def current_work_dirs(root: Path) -> list[Path]:
 
 
 def check_duplicate_ids(root: Path, findings: list[Finding]) -> None:
-    request_paths = list((root / "02_CT_管理/依頼").glob("RQ-*.md"))
+    request_paths = close_gate.request_documents(root / "02_CT_管理/依頼", "RQ-*.md")
     request_paths += list((root / "99_AX_アーカイブ/依頼").glob("RQ-*"))
     work_paths = current_work_dirs(root)
     work_paths += list((root / "99_AX_アーカイブ/依頼").glob("RQ-*/work/W-*"))
@@ -961,7 +969,7 @@ def check_work_record(work_dir: Path, root: Path, findings: list[Finding]) -> No
     candidate_metadata = read_frontmatter(candidate_path)
     input_metadata = read_frontmatter(input_path)
     project_id = project_identity(root).get("project_id")
-    request_ids = set(collect_ids(list((root / "02_CT_管理/依頼").glob("RQ-*.md")), ID_PATTERNS["request"]))
+    request_ids = set(collect_ids(close_gate.request_documents(root / "02_CT_管理/依頼", "RQ-*.md"), ID_PATTERNS["request"]))
     request_ids.update(collect_ids(list((root / "99_AX_アーカイブ/依頼").glob("RQ-*")), ID_PATTERNS["request"]))
     for path, metadata, expected_type in (
         (scope_path, scope_metadata, "work_scope"),
@@ -1033,7 +1041,7 @@ def check_work_record(work_dir: Path, root: Path, findings: list[Finding]) -> No
         add(findings, "error", f"作業メモにテンプレートのプレースホルダーが残っています: {relative_dir}")
 
     plan_item = scope_metadata.get("plan_item_id", "")
-    requests = list((root / "02_CT_管理/依頼").glob(f"{scope_metadata.get('request_id', '')}_*.md"))
+    requests = close_gate.request_documents(root / "02_CT_管理/依頼", f"{scope_metadata.get('request_id', '')}_*.md")
     if requests:
         rq = read_frontmatter(requests[0])
         plan = root / rq.get("plan_file", "none")
@@ -1213,7 +1221,7 @@ def check_knowledge(root: Path, findings: list[Finding]) -> None:
     knowledge_ids = set(collect_ids(knowledge_paths, ID_PATTERNS["knowledge"]))
     indexed_ids = set(ID_PATTERNS["knowledge"].findall(index_text))
     project_id = project_identity(root).get("project_id")
-    request_ids = set(collect_ids(list((root / "02_CT_管理/依頼").glob("RQ-*.md")), ID_PATTERNS["request"]))
+    request_ids = set(collect_ids(close_gate.request_documents(root / "02_CT_管理/依頼", "RQ-*.md"), ID_PATTERNS["request"]))
     request_ids.update(collect_ids(list((root / "99_AX_アーカイブ/依頼").glob("RQ-*")), ID_PATTERNS["request"]))
     work_ids = set(collect_ids(current_work_dirs(root), ID_PATTERNS["work"]))
     work_ids.update(collect_ids(list((root / "99_AX_アーカイブ/依頼").glob("RQ-*/work/W-*")), ID_PATTERNS["work"]))
@@ -1283,7 +1291,7 @@ def check_knowledge(root: Path, findings: list[Finding]) -> None:
 def check_context_records(root: Path, findings: list[Finding]) -> None:
     # 登録時は解消作業を「未割当（Plan）」にでき、計画承認後に計画項目IDへ付け替える（IMP-005）。
     planned_request_ids = {
-        meta.get("request_id", "") for path in (root / "02_CT_管理/依頼").glob("RQ-*.md")
+        meta.get("request_id", "") for path in close_gate.request_documents(root / "02_CT_管理/依頼", "RQ-*.md")
         if (meta := read_frontmatter(path)).get("planning_status") == "approved"
     }
     legacy: dict[str, int] = {}
@@ -1347,7 +1355,7 @@ def check_context_records(root: Path, findings: list[Finding]) -> None:
     for old_id, count in legacy.items():
         if count > 1:
             add(findings, "error", f"Contextのlegacy_idで{old_id}が重複しています")
-    if list((root / "02_CT_管理/依頼").glob("RQ-*.md")):
+    if close_gate.request_documents(root / "02_CT_管理/依頼", "RQ-*.md"):
         for group in ({"objective", "success_condition"}, {"stakeholder", "authority"}, {"scope"}, {"requirement", "expectation"},
                       {"assumption", "constraint", "unknown", "conflict"}, {"acceptance"}):
             if not types & group:
@@ -1361,7 +1369,7 @@ def check_context_records(root: Path, findings: list[Finding]) -> None:
 
 
 def check_indexes(root: Path, findings: list[Finding]) -> None:
-    request_files = list((root / "02_CT_管理/依頼").glob("RQ-*.md"))
+    request_files = close_gate.request_documents(root / "02_CT_管理/依頼", "RQ-*.md")
     request_ids = set(collect_ids(request_files, ID_PATTERNS["request"]))
     indexed_requests = ids_in_file(root / "02_CT_管理/依頼一覧.md", ID_PATTERNS["request"])
     for request_id in sorted(request_ids - indexed_requests):
@@ -1372,7 +1380,7 @@ def check_indexes(root: Path, findings: list[Finding]) -> None:
         for path in request_files
         if (metadata := read_frontmatter(path))
     }
-    for plan_path in (root / "02_CT_管理/進行計画").glob("RQ-*.md"):
+    for plan_path in close_gate.request_documents(root / "02_CT_管理/進行計画", "RQ-*.md"):
         plan_metadata = read_frontmatter(plan_path)
         request_id = plan_metadata.get("request_id", "")
         relative = nfc(plan_path.relative_to(root).as_posix())
@@ -1387,6 +1395,13 @@ def check_indexes(root: Path, findings: list[Finding]) -> None:
             continue
         if request_metadata.get("plan_file") != relative:
             add(findings, "error", f"依頼から参照されていない進行計画です: {relative}")
+
+    # 登録前の依頼承認記録（提示中の登録案）は依頼の検査対象にならないため、ここで書式と提示中を確認する。
+    for folder, scope in (("依頼", "request"), ("進行計画", "plan")):
+        for approval in sorted((root / "02_CT_管理" / folder).glob(f"RQ-*_*{close_gate.APPROVAL_SUFFIX}.md")):
+            approval_request = approval.name.split("_", 1)[0]
+            if approval_request not in request_by_id:
+                check_approval_record(approval, scope, root, findings, approval_request)
 
     work_dirs = current_work_dirs(root)
     work_ids = set(collect_ids(work_dirs, ID_PATTERNS["work"]))
@@ -1406,6 +1421,10 @@ def check_indexes(root: Path, findings: list[Finding]) -> None:
         check_work_record(work_dir, root, findings)
         match = ID_PATTERNS["work"].search(work_dir.name)
         work_id = match.group(0) if match else ""
+        if (work_dir / "作業内容.md").is_file():
+            check_approval_record(work_dir / "承認記録.md", "work", root, findings,
+                                  read_frontmatter(work_dir / "作業内容.md").get("request_id", ""), work_id,
+                                  required_kinds={"開始承認"})
         matching_rows = [
             line for line in work_index_text.splitlines()
             if re.match(rf"^\|\s*{re.escape(work_id)}\s*\|", line)
@@ -1613,7 +1632,7 @@ def check_request_archive_cleanup(root: Path, request_dir: Path, request_id: str
         add(findings, "error", f"依頼一覧の終了索引が不足しています: {request_id}")
     elif not any(row[1] == rows[0][8] and row[2] == "request" for row in mappings):
         add(findings, "error", f"依頼一覧のアーカイブ参照が一致しません: {request_id}")
-    request_files = [path for path in request_dir.glob(f"{request_id}_*.md") if "_進行計画" not in path.stem and not path.stem.endswith("_WBS")]
+    request_files = [path for path in close_gate.request_documents(request_dir, f"{request_id}_*.md") if "_進行計画" not in path.stem and not path.stem.endswith("_WBS")]
     if len(request_files) == 1:
         expected_path = nfc(request_files[0].relative_to(root).as_posix())
         if expected_path not in mapped_destinations or (len(rows) == 1 and len(rows[0]) >= 9 and rows[0][8] != expected_path):
@@ -1641,7 +1660,7 @@ def check_archives(root: Path, findings: list[Finding]) -> None:
 def check_request_archive(root: Path, request_dir: Path, findings: list[Finding]) -> None:
     request_id_match = ID_PATTERNS["request"].search(request_dir.name)
     request_id = request_id_match.group(0) if request_id_match else "RQ不明"
-    request_files = list(request_dir.glob(f"{request_id}_*.md"))
+    request_files = close_gate.request_documents(request_dir, f"{request_id}_*.md")
     request_files = [path for path in request_files if "_進行計画" not in path.stem and not path.stem.endswith("_WBS")]
     if len(request_files) != 1:
         add(findings, "error", f"依頼MDは1件必要です: {request_dir.relative_to(root)}")
@@ -1771,6 +1790,89 @@ def check_context_index(root: Path, findings: list[Finding]) -> None:
         add(findings, "error", f"Context一覧に登録されていません: {item_id}")
 
 
+def check_approval_record(path: Path, scope: str, root: Path, findings: list[Finding], request_id: str,
+                          work_id: str = "", required_kinds: set[str] | None = None) -> dict[str, dict]:
+    """承認記録（依頼・計画・Work）の書式と承認の中身を検査する（テーマC）。"""
+    relative = nfc(path.relative_to(root).as_posix())
+    if not path.is_file():
+        if required_kinds:
+            add(findings, "error", f"承認記録がありません: {relative}")
+        return {}
+    metadata = read_frontmatter(path)
+    expected = [("workflow_schema", SCHEMA_VERSION), ("document_type", "approval_record"),
+                ("approval_scope", scope), ("request_id", request_id)] + ([("work_id", work_id)] if work_id else [])
+    for key, value in expected:
+        if metadata.get(key) != value:
+            add(findings, "error", f"承認記録の{key}が一致しません: {relative}")
+    for field in ("updated_at", "updated_by"):
+        if is_placeholder(metadata.get(field)):
+            add(findings, "error", f"承認記録frontmatterの{field}が未設定です: {relative}")
+    text = read_text(path)
+    if "## 承認の記録" not in text:
+        add(findings, "error", f"承認記録に必須見出しがありません: ## 承認の記録: {relative}")
+    entries: dict[str, dict] = {}
+    for entry in close_gate.approval_entries(text):
+        if entry["id"] in entries:
+            add(findings, "error", f"承認記録の見出しIDが重複しています: {relative}#{entry['id']}")
+        entries[entry["id"]] = entry
+        for problem in close_gate.approval_problems(entry, scope):
+            add(findings, "error", f"承認記録の{entry['id']}: {problem}: {relative}")
+        if entry["fields"].get("状態") == "提示中":
+            add(findings, "warning", f"提示中のままの承認案があります（正本は未変更。承認か差し戻しを記録してください）: {relative}#{entry['id']}")
+    if required_kinds and not any(entry["kind"] in required_kinds and entry["fields"].get("状態") == "承認済み"
+                                  for entry in entries.values()):
+        add(findings, "error", f"承認記録に承認済みの{'・'.join(sorted(required_kinds))}がありません: {relative}")
+    return entries
+
+
+def check_plan_revision_approvals(plan_path: Path, entries: dict[str, dict], root: Path,
+                                  findings: list[Finding]) -> None:
+    """進行計画の改訂履歴の承認記録欄が、計画承認記録の承認済みの見出しを指しているかを見る。"""
+    rows = close_gate.table_rows(section_text(read_text(plan_path), "## 改訂履歴"))
+    if not rows or "承認記録" not in rows[0]:
+        return  # 旧書式（承認者欄）は読み取りだけ
+    relative = nfc(plan_path.relative_to(root).as_posix())
+    for row in rows[1:]:
+        if len(row) != 6:
+            add(findings, "error", f"進行計画の改訂履歴の列数が不正です: {relative}: {row[0]}")
+            continue
+        kind, ref = row[2], row[5]
+        if kind not in {"Plan承認", "区切り承認"}:
+            continue
+        entry = entries.get(ref)
+        if not entry or entry["kind"] != kind or entry["fields"].get("状態") != "承認済み":
+            add(findings, "error", f"進行計画の改訂{row[0]}の承認記録が計画承認記録の承認済み{kind}と一致しません: {ref}")
+
+
+def approval_record_file(root: Path, owner: str, kind: str) -> Path | None:
+    """承認記録への参照（RQ-xxxx_依頼承認記録 / RQ-xxxx_計画承認記録 / W-xxxx_承認記録）を実ファイルに解決する。"""
+    if owner.startswith("RQ-"):
+        name = f"{owner}_{kind}{close_gate.APPROVAL_SUFFIX}.md"
+        folder = "依頼" if kind == "依頼" else "進行計画"
+        candidates = [root / "02_CT_管理" / folder / name] + list((root / "99_AX_アーカイブ/依頼").glob(f"{owner}_*/{name}"))
+    else:
+        candidates = [work / "承認記録.md" for work in current_work_dirs(root) if work.name.startswith(owner + "_")]
+        candidates += [work / "承認記録.md" for work in (root / "99_AX_アーカイブ/依頼").glob(f"RQ-*/work/{owner}_*")]
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def check_approval_references(root: Path, findings: list[Finding]) -> None:
+    history = root / "02_CT_管理/更新履歴.md"
+    if not history.is_file():
+        return
+    pattern = re.compile(r"(RQ-\d{4}|W-\d{4})_(依頼|計画)?" + close_gate.APPROVAL_SUFFIX + r"(?:\.md)?#(A-\d{2})")
+    for match in pattern.finditer(read_text(history)):
+        owner, kind, approval_id = match.group(1), match.group(2) or "", match.group(3)
+        if owner.startswith("RQ-") == (not kind):
+            add(findings, "error", f"更新履歴の承認記録参照の書式が不正です: {match.group(0)}")
+            continue
+        path = approval_record_file(root, owner, kind)
+        if not path:
+            add(findings, "error", f"更新履歴が参照する承認記録がありません: {match.group(0)}")
+        elif approval_id not in {entry["id"] for entry in close_gate.approval_entries(read_text(path))}:
+            add(findings, "error", f"更新履歴が参照する承認記録の見出しがありません: {match.group(0)}")
+
+
 def check_project(root: Path) -> list[Finding]:
     findings: list[Finding] = []
     check_structure(root, findings)
@@ -1783,6 +1885,7 @@ def check_project(root: Path) -> list[Finding]:
     check_context_records(root, findings)
     check_initialized_project(root, findings)
     check_archives(root, findings)
+    check_approval_references(root, findings)
     return findings
 
 
