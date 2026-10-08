@@ -763,7 +763,7 @@ def work_todo_rows(text: str) -> dict[str, str]:
 
 def todo_log_section(text: str, todo_id: str) -> str:
     match = re.search(
-        rf"^### TODO\s+{re.escape(todo_id)}(?:：|:|\s).*?(?=^### TODO\s+T-\d{{3}}|^##\s|\Z)",
+        rf"^### TODO\s+{re.escape(todo_id)}(?:：|:|\s).*?(?=^###?\s|\Z)",
         text,
         re.MULTILINE | re.DOTALL,
     )
@@ -865,7 +865,7 @@ def check_work_record(work_dir: Path, root: Path, findings: list[Finding]) -> No
     for heading in WORK_CANDIDATE_HEADINGS:
         if heading not in candidate_text:
             add(findings, "error", f"反映候補に必須見出しがありません: {heading}: {relative_dir}")
-    if "TODOの題名" in log_text or "#### 追記 YYYY-MM-DD HH:MM" in log_text:
+    if re.search(r"^###\s.*TODOの題名|^#### 追記 YYYY-MM-DD HH:MM", log_text, re.MULTILINE):
         add(findings, "error", f"作業メモにテンプレートのプレースホルダーが残っています: {relative_dir}")
 
     plan_item = scope_metadata.get("plan_item_id", "")
@@ -1008,7 +1008,9 @@ def check_work_record(work_dir: Path, root: Path, findings: list[Finding]) -> No
                     add(findings, "error", f"Context反映候補の状態が不正です: {candidate_id}: {relative_dir}")
                 if cells[9] in {"", "-", "未設定"}:
                     add(findings, "error", f"Context反映候補の根拠が未設定です: {candidate_id}: {relative_dir}")
-    log_ids = set(CANDIDATE_ID_PATTERN.findall(section_text(log_text, "## TODOごとの作業記録")))
+    # 見出し前の説明文にある書式例は記録ではないため、### 見出し以降だけを照合する。
+    record_text = section_text(log_text, "## TODOごとの作業記録").partition("\n### ")[2]
+    log_ids = set(CANDIDATE_ID_PATTERN.findall(record_text))
     for candidate_id in sorted(log_ids - candidate_counts.keys()):
         add(findings, "error", f"作業メモの候補IDが反映候補にありません: {candidate_id}: {relative_dir}")
     for candidate_id, count in sorted(candidate_counts.items()):
@@ -1254,12 +1256,18 @@ def check_input_materials(root: Path, findings: list[Finding]) -> None:
         if count > 1:
             add(findings, "error", f"入力資料一覧で{material_id}が重複しています")
 
+    # 受付中（draft/ready）は、原本を置いてからRequest StartでMATを採番するまでの正常な中間状態。
+    intake_path = root / "01_IN_入力/依頼受付.md"
+    intake_open = intake_path.is_file() and read_frontmatter(intake_path).get("record_status") in {"draft", "ready"}
     for path in (root / "01_IN_入力/入力").rglob("*"):
         if not path.is_file() or path.name.startswith("."):
             continue
         relative = nfc(path.relative_to(root).as_posix())
         if relative not in index_text:
-            add(findings, "error", f"入力資料一覧に登録されていません: {relative}")
+            if intake_open:
+                add(findings, "warning", f"受付中の原本が入力資料一覧に未登録です（Request Startで登録）: {relative}")
+            else:
+                add(findings, "error", f"入力資料一覧に登録されていません: {relative}")
 
 
 REQUEST_CLOSURE_HEADINGS = (
@@ -1289,10 +1297,14 @@ def check_request_closure(summary_path: Path, request_id: str, findings: list[Fi
     if metadata.get("closure_contract") != "1":
         add(findings, "error", f"終了サマリのclosure_contractが不正です: {request_id}")
     for key, expected in (("workflow_schema", SCHEMA_VERSION),
-                          ("document_type", "request_closure_summary"), ("request_id", request_id),
-                          ("cleanup_status", "completed")):
+                          ("document_type", "request_closure_summary"), ("request_id", request_id)):
         if metadata.get(key) != expected:
             add(findings, "error", f"終了サマリの{key}が一致しません: {request_id}")
+    # pendingは整理途中の正常な状態。完了可否はverify-request-closeで対象依頼だけを判定する。
+    if metadata.get("cleanup_status") == "pending":
+        add(findings, "warning", f"依頼終了の整理が未完了です（cleanup_status: pending）: {request_id}")
+    elif metadata.get("cleanup_status") != "completed":
+        add(findings, "error", f"終了サマリのcleanup_statusが不正です: {request_id}")
     if metadata.get("final_status") not in {"completed", "cancelled"}:
         add(findings, "error", f"終了サマリのfinal_statusが不正です: {request_id}")
     for key in ("project_id", "closed_at", "closed_by", "approved_at", "approved_by"):
@@ -1443,37 +1455,41 @@ def check_archives(root: Path, findings: list[Finding]) -> None:
         if not request_dir.is_dir():
             add(findings, "error", f"アーカイブ依頼はフォルダである必要があります: {request_dir.relative_to(root)}")
             continue
-        request_id_match = ID_PATTERNS["request"].search(request_dir.name)
-        request_id = request_id_match.group(0) if request_id_match else "RQ不明"
-        request_files = list(request_dir.glob(f"{request_id}_*.md"))
-        request_files = [path for path in request_files if "_進行計画" not in path.stem]
-        if len(request_files) != 1:
-            add(findings, "error", f"依頼MDは1件必要です: {request_dir.relative_to(root)}")
-        elif (metadata := read_frontmatter(request_files[0])) and metadata.get("planning_status") in {"approved", "needs_revision"}:
-            plan_files = list(request_dir.glob(f"{request_id}_進行計画.md"))
-            if len(plan_files) != 1:
-                add(findings, "error", f"計画済み依頼の進行計画MDは1件必要です: {request_dir.relative_to(root)}")
-            else:
-                plan_relative = nfc(plan_files[0].relative_to(root).as_posix())
-                if metadata.get("plan_file") != plan_relative:
-                    add(findings, "error", f"アーカイブ依頼のplan_fileが移動先と一致しません: {request_id}")
-        if not (request_dir / "終了サマリ.md").is_file():
-            add(findings, "error", f"終了サマリ.mdがありません: {request_dir.relative_to(root)}")
+        check_request_archive(root, request_dir, findings)
+
+
+def check_request_archive(root: Path, request_dir: Path, findings: list[Finding]) -> None:
+    request_id_match = ID_PATTERNS["request"].search(request_dir.name)
+    request_id = request_id_match.group(0) if request_id_match else "RQ不明"
+    request_files = list(request_dir.glob(f"{request_id}_*.md"))
+    request_files = [path for path in request_files if "_進行計画" not in path.stem]
+    if len(request_files) != 1:
+        add(findings, "error", f"依頼MDは1件必要です: {request_dir.relative_to(root)}")
+    elif (metadata := read_frontmatter(request_files[0])) and metadata.get("planning_status") in {"approved", "needs_revision"}:
+        plan_files = list(request_dir.glob(f"{request_id}_進行計画.md"))
+        if len(plan_files) != 1:
+            add(findings, "error", f"計画済み依頼の進行計画MDは1件必要です: {request_dir.relative_to(root)}")
         else:
-            check_request_closure(request_dir / "終了サマリ.md", request_id, findings)
-            check_request_archive_cleanup(root, request_dir, request_id, findings)
-        work_root = request_dir / "work"
-        if not work_root.is_dir():
-            add(findings, "error", f"workフォルダがありません: {request_dir.relative_to(root)}")
+            plan_relative = nfc(plan_files[0].relative_to(root).as_posix())
+            if metadata.get("plan_file") != plan_relative:
+                add(findings, "error", f"アーカイブ依頼のplan_fileが移動先と一致しません: {request_id}")
+    if not (request_dir / "終了サマリ.md").is_file():
+        add(findings, "error", f"終了サマリ.mdがありません: {request_dir.relative_to(root)}")
+    else:
+        check_request_closure(request_dir / "終了サマリ.md", request_id, findings)
+        check_request_archive_cleanup(root, request_dir, request_id, findings)
+    work_root = request_dir / "work"
+    if not work_root.is_dir():
+        add(findings, "error", f"workフォルダがありません: {request_dir.relative_to(root)}")
+        return
+    for work_dir in work_root.glob("W-*"):
+        if not work_dir.is_dir():
+            add(findings, "error", f"アーカイブWorkはフォルダである必要があります: {work_dir.relative_to(root)}")
             continue
-        for work_dir in work_root.glob("W-*"):
-            if not work_dir.is_dir():
-                add(findings, "error", f"アーカイブWorkはフォルダである必要があります: {work_dir.relative_to(root)}")
-                continue
-            for required in ("作業内容.md", "作業メモ.md", "反映候補.md", "入力/入力一覧.md"):
-                if not (work_dir / required).is_file():
-                    add(findings, "error", f"{required}がありません: {work_dir.relative_to(root)}")
-            check_work_record(work_dir, root, findings)
+        for required in ("作業内容.md", "作業メモ.md", "反映候補.md", "入力/入力一覧.md"):
+            if not (work_dir / required).is_file():
+                add(findings, "error", f"{required}がありません: {work_dir.relative_to(root)}")
+        check_work_record(work_dir, root, findings)
 
 
 def check_context_index(root: Path, findings: list[Finding]) -> None:
@@ -1585,6 +1601,17 @@ def check_project(root: Path) -> list[Finding]:
     return findings
 
 
+def verify_request_close(root: Path, request_id: str) -> list[Finding]:
+    """対象依頼のアーカイブ・終了サマリ・関連Workだけを検査する（cleanup_statusの完了判定用）。"""
+    findings: list[Finding] = []
+    request_dirs = [path for path in (root / "99_AX_アーカイブ/依頼").glob(f"{request_id}_*") if path.is_dir()]
+    if len(request_dirs) != 1:
+        add(findings, "error", f"対象依頼のアーカイブフォルダは1件必要です: {request_id}")
+        return findings
+    check_request_archive(root, request_dirs[0], findings)
+    return [item for item in findings if item.level == "error"]
+
+
 def next_action(findings: list[Finding]) -> str:
     if any(finding.level == "error" for finding in findings):
         return "構造または台帳のエラーを解消してから状態遷移を行ってください。"
@@ -1613,10 +1640,12 @@ def main() -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table"), default="check")
+    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table", "verify-request-close"),
+                        default="check")
     parser.add_argument("--root", default=".", help="案件ワークスペースのルート")
     parser.add_argument("--strict", action="store_true", help="エラーがあれば終了コード1を返す")
     parser.add_argument("--work", help="対象Workのルート相対パス")
+    parser.add_argument("--request", help="verify-request-close: 対象依頼のRQ-ID")
     parser.add_argument("--phase", choices=("before", "resume", "after"), default="before")
     parser.add_argument("--target", action="append", default=[], metavar="参照=work:終了反映案/…",
                         help="version-table: 変更する正本と承認用内容（複数指定可）")
@@ -1624,6 +1653,15 @@ def main() -> int:
                         help="version-table: 削除する正本（複数指定可）")
     args = parser.parse_args()
     root = Path(args.root).resolve()
+    if args.command == "verify-request-close":
+        if not args.request or not ID_PATTERNS["request"].fullmatch(args.request):
+            parser.error("--request RQ-xxxx が必要です")
+        errors = verify_request_close(root, args.request)
+        for finding in errors:
+            print(finding.message)
+        if not errors:
+            print(f"依頼終了の保存・整理に問題はありません: {args.request}")
+        return 1 if errors else 0
     if args.command != "check":
         if not args.work:
             parser.error("--workが必要です")
