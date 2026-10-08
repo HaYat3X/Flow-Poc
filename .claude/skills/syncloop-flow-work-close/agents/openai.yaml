@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：Work終了"
+  short_description: "終了状態・次アクション・引継ぎを判断して承認内容を保存する"
+  default_prompt: "Use $syncloop-flow-work-close to save an approved close decision, next action and handoff without applying it."
+policy:
+  allow_implicit_invocation: true

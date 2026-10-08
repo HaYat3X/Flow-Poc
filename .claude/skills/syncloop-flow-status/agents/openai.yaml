@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：現在地確認"
+  short_description: "Context・部分計画・終了同期の状況と次の対応を確認する"
+  default_prompt: "Use $syncloop-flow-status to report project Context, partial planning and close-sync status without edits."
+policy:
+  allow_implicit_invocation: true

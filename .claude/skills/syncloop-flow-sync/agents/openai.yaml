@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：記録同期"
+  short_description: "途中同期または承認済みClose判断の反映とWork完了確定を行う"
+  default_prompt: "Use $syncloop-flow-sync to apply approved decisions or finalize a Work through an approved close sync."
+policy:
+  allow_implicit_invocation: true
