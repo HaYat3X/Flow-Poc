@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
-import shutil
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -100,8 +99,6 @@ PROJECT_ID_PATTERN = re.compile(r"PRJ-[A-Z0-9]+(?:-[A-Z0-9]+)*")
 FLOW_PROJECT_ID_PATTERN = re.compile(r"flow-\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*")
 # 原本は受け取った形式のまま、YYYY-MM-DD_資料種別_件名.拡張子 で置く（書き起こしは別ファイル）。
 MATERIAL_NAME_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}_[^_\s]+_[^\s]+\.[A-Za-z0-9]+")
-# .claude/ は .agents/ の写し（sync-claudeで作る）。
-CLAUDE_MIRRORS = ((".agents/skills", ".claude/skills"), (".agents/policies", ".claude/rules"))
 PLAN_HEADINGS = (
     "## 進め方の要約",
     "## 依頼全体の到達点・終了条件",
@@ -1496,60 +1493,6 @@ def check_material_name(path: Path, label: str, findings: list[Finding]) -> None
         add(findings, "warning", f"原本のファイル名が YYYY-MM-DD_資料種別_件名.拡張子 の形ではありません: {label}")
 
 
-def mirror_entries(source: Path, mirror: Path) -> list[str]:
-    """写しの管理対象: .agents/ にある項目と、.claude/ に残ったFlowのSkill。利用者が.claude/に置いた他の項目は触らない。"""
-    names = {p.name for p in source.iterdir()} if source.is_dir() else set()
-    if mirror.is_dir():
-        names |= {p.name for p in mirror.iterdir() if p.name.startswith("syncloop-flow-")}
-    return sorted(name for name in names if name != "__pycache__")
-
-
-def files_under(path: Path) -> set[str]:
-    if path.is_file():
-        return {""}
-    return {p.relative_to(path).as_posix() for p in path.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-
-
-def mirror_differences(root: Path) -> list[str]:
-    """.agents/ と .claude/ の写しの差分（相対パス）。.claude/ がなければ対象外。"""
-    if not (root / ".claude").is_dir():
-        return []
-    differences = []
-    for source_name, mirror_name in CLAUDE_MIRRORS:
-        source, mirror = root / source_name, root / mirror_name
-        for entry in mirror_entries(source, mirror):
-            source_files, mirror_files = files_under(source / entry), files_under(mirror / entry)
-            for name in sorted(source_files | mirror_files):
-                left, right = (source / entry / name), (mirror / entry / name)
-                if name not in source_files or name not in mirror_files or left.read_bytes() != right.read_bytes():
-                    differences.append(f"{mirror_name}/{entry}/{name}".rstrip("/"))
-    return differences
-
-
-def check_claude_mirror(root: Path, findings: list[Finding]) -> None:
-    for name in mirror_differences(root):
-        add(findings, "error", f".agents/ と内容が一致しません（sync-claudeで同期）: {name}")
-
-
-def sync_claude(root: Path) -> list[str]:
-    synced = []
-    for source_name, mirror_name in CLAUDE_MIRRORS:
-        source, mirror = root / source_name, root / mirror_name
-        mirror.mkdir(parents=True, exist_ok=True)
-        for entry in mirror_entries(source, mirror):
-            target = mirror / entry
-            if target.is_dir():
-                shutil.rmtree(target)
-            elif target.exists():
-                target.unlink()
-            if (source / entry).is_dir():
-                shutil.copytree(source / entry, target, ignore=shutil.ignore_patterns("__pycache__"))
-            elif (source / entry).exists():
-                shutil.copy2(source / entry, target)
-            synced.append(f"{mirror_name}/{entry}")
-    return synced
-
-
 REQUEST_CLOSURE_HEADINGS = (
     "## 終了理由と結果",
     "## 関連Workの最終状態",
@@ -1989,7 +1932,6 @@ def check_project(root: Path) -> list[Finding]:
     check_initialized_project(root, findings)
     check_archives(root, findings)
     check_approval_references(root, findings)
-    check_claude_mirror(root, findings)
     return findings
 
 
@@ -2032,7 +1974,7 @@ def main() -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table", "verify-request-close", "gantt", "sync-claude"),
+    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table", "verify-request-close", "gantt"),
                         default="check")
     parser.add_argument("--root", default=".", help="案件ワークスペースのルート")
     parser.add_argument("--strict", action="store_true", help="エラーがあれば終了コード1を返す")
@@ -2062,10 +2004,6 @@ def main() -> int:
             print(f"ガントを更新しました: {args.wbs}")
         else:
             print("\n".join(close_gate.render_gantt(text, close_gate.wbs_title(text))))
-        return 0
-    if args.command == "sync-claude":
-        for name in sync_claude(root):
-            print(f"同期しました: {name}")
         return 0
     if args.command == "verify-request-close":
         if not args.request or not ID_PATTERNS["request"].fullmatch(args.request):

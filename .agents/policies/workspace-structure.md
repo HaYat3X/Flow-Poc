@@ -27,8 +27,3 @@
 - 依頼終了時は依頼本文・依頼承認記録・対応する進行計画・WBS・計画承認記録と終了サマリを `99_AX_アーカイブ/依頼/RQ-xxxx_依頼名/` 直下へ、関連する終了済みWorkを `work/` へ移す。対象依頼専用の受付原本は `input/` へ移し、共有・継続利用資料はINに理由付きで残す。案件全体のContext、Product、Knowledgeは移動・初期化しない。
 - 初期化/圧縮前の依頼受付・入力資料一覧・現在地・依頼一覧・Work一覧・更新履歴は、同じAX内の `記録/` に同名でバイト列保存する。履歴スナップショットと現行正本を区別する。原本と記録の保存前SHA256、全移動先・残置先を終了サマリの参照移動対応に記録する。保存後に対象受付だけを初期化し、MAT索引を維持してCTを残る依頼/Workの現行表示へ圧縮する。詳細はproject-record-updates.mdに従う。
 - Work内の入力要約・引継ぎ・終了反映案は、その時点の記録であり案件の正本を置き換えない。移動時にも根拠・承認を追跡できるようにする。
-
-## Skill・Policyの配置
-
-- Skill・Policyの正本は `.agents/skills/` と `.agents/policies/` とする。Claude Code用の `.claude/skills/` と `.claude/rules/` はその写しで、直接編集しない。`.agents/` を変えたら `.tools/project_workflow_check.py sync-claude` で写しを作り直す。`.claude/` があるとき、共通検査は写しのずれをエラーにする。
-- `.claude/rules/` はClaude Codeが作業時に自動で読み込むため、写しがずれるとツールによって動作が変わる。
