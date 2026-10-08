@@ -21,7 +21,7 @@
 - `.agents/skills/` に常設された共通Skillは、利用者の自然言語またはSkill名の明示指定（Codexは `$skill-name`、Claude Code・GitHub Copilotは `/skill-name`）に合致したときに使用する。
 - Skillの正本は `.agents/skills/`、Policyの正本は `.agents/policies/` とする。CodexとGitHub Copilotは正本をそのまま読む。Claude Code用の `.claude/skills/` は正本の複製であり、直接編集しない。正本を変更したら `.tools/project_workflow_check.py sync-skills` で複製し、共通検査で一致を確かめる。Policyは `.claude/rules/` などへ複製しない。
 - `.specialization-skills/` は特化Skillの非アクティブな保管場所であり、通常の作業では読取・探索・提案・実行の対象にしない。
-- 特化Skillは、利用者がSkill名を指定して配置を依頼した場合に限り、対象ディレクトリ一式を `.agents/skills/` へ配置する。配置後は `sync-skills` でClaude Code用にも複製し、利用者がその都度Skill名を明示指定した場合だけ実行する。共通Skillから特化Skillを提案または呼び出さない。
+- 特化Skillは、利用者がSkill名を指定して配置を依頼した場合に限り、次の順で配置する。(1) `.specialization-skills/<skill名>/` を `.agents/skills/<skill名>/` へ移動する（保管場所には残さない）。(2) `.tools/project_workflow_check.py sync-skills` で `.claude/skills/` へ複製する。`.claude/skills/` へ直接置かない。(3) 共通検査で一致を確かめる。配置後は、利用者がその都度Skill名を明示指定した場合だけ実行する。共通Skillから特化Skillを提案または呼び出さない。
 - Skillが選択されたことは、業務上の確定・正式化・終了・アーカイブの承認を意味しない。
 - 読み取りと変更案の作成は進めてよい。確定Context・意思決定・リスク・課題・Knowledgeへの反映、Work・依頼の終了、アーカイブは、具体的な判断案を示して利用者またはPMの承認を得てから実行する。
 - 利用者またはPMが対象と操作を特定して実行を依頼した場合は、その依頼を承認とみなし、同じ内容の再承認を求めない。対象、影響範囲、不可逆な操作に不明点がある場合だけ確認する。
