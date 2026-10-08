@@ -4,7 +4,7 @@ document_type: context_index
 project_id: PRJ-MINATO-ASSET
 record_status: active
 updated_at: 2026-10-08
-updated_by: Claude（はやて承認）
+updated_by: Claude（はやて承認、W-0001-C01）
 ---
 
 # Context一覧
@@ -25,5 +25,6 @@ updated_by: Claude（はやて承認）
 | CTX-0010 | unknown | 連携・利用環境の条件が未確認 | project | unknown | pending | active | false | - | プロジェクトコンテキスト.md |
 | CTX-0011 | acceptance | 要件定義書の合意方法は未定 | RQ-0001 | unknown | pending | active | false | - | プロジェクトコンテキスト.md |
 | CTX-0012 | commercial_boundary | 契約と予算が未確定 | project | unknown | pending | active | false | - | プロジェクトコンテキスト.md |
+| CTX-0013 | unknown | データクレンジング担当が未確定 | project | unknown | pending | active | false | - | プロジェクトコンテキスト.md |
 
 行例：`| CTX-0001 | objective | 月次締め短縮 | project | confirmed | approved | active | false | - | プロジェクトコンテキスト.md |`
