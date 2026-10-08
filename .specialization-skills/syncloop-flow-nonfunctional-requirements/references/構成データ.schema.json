@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "システム構成図の構成データ",
+  "description": "scripts/architecture_excalidraw.py が検証し、.excalidraw に出力する。座標は持たず、配置のマス（col・row）だけを指定する。",
+  "type": "object",
+  "required": ["zones", "nodes"],
+  "properties": {
+    "title": {"type": "string", "description": "図の見出し（任意）"},
+    "zones": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label"],
+        "properties": {
+          "id": {"type": "string"},
+          "label": {"type": "string"},
+          "kind": {"enum": ["network", "server", "external"], "default": "network"},
+          "parent": {"type": "string", "description": "入れ子にする親ゾーンのid"}
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "zone", "kind", "status", "col", "row", "label"],
+        "properties": {
+          "id": {"type": "string"},
+          "zone": {"type": "string"},
+          "kind": {"enum": ["client", "boundary", "app", "data", "external"]},
+          "status": {"enum": ["確認済み", "未確認"], "description": "未確認は点線・黄色・「（未確認）」付きで描く"},
+          "col": {"type": "integer", "minimum": 0},
+          "row": {"type": "integer", "minimum": 0},
+          "label": {"type": "string", "description": "改行は \\n"}
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from": {"type": "string"},
+          "to": {"type": "string"},
+          "label": {"type": "string", "description": "同じ行・同じ列の直線、または route=bottom のリンクだけに付けられる"},
+          "style": {"enum": ["solid", "dashed"], "default": "solid"},
+          "route": {"enum": ["auto", "bottom"], "default": "auto"}
+        }
+      }
+    }
+  }
+}

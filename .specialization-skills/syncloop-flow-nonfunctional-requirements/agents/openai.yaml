@@ -1,0 +1,6 @@
+interface:
+  display_name: "Syncloop Flow：非機能要件"
+  short_description: "入力と対話から非機能要件の初版と構成図を作る"
+  default_prompt: "Use $syncloop-flow-nonfunctional-requirements only when explicitly invoked by the user. Require an explicitly specified started requirements Work folder, registered inputs, and an output folder inside that Work. If any specification is missing, ask for it and stop without creating files. Take stock of the inputs per chapter, ask the user about thin or missing items chapter by chapter, and never fill unconfirmed values by guessing; mark them unconfirmed and collect questions. Produce a first draft (about 80 percent) of the nonfunctional requirements in Markdown with owner, status, and evidence per item, plus an Excalidraw system architecture diagram generated from a structured data file with the bundled script. Never overwrite existing files, decide contract terms, or modify originals or authoritative project records."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,131 @@
+{
+  "title": "システム構成図（サンプル）",
+  "zones": [
+    {
+      "id": "net",
+      "label": "顧客 社内ネットワーク（インターネット非公開）",
+      "kind": "network"
+    },
+    {
+      "id": "server",
+      "label": "サーバ",
+      "kind": "server",
+      "parent": "net"
+    },
+    {
+      "id": "outside",
+      "label": "社外",
+      "kind": "external"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "pc",
+      "zone": "net",
+      "kind": "client",
+      "status": "確認済み",
+      "col": 0,
+      "row": 0,
+      "label": "クライアントPC\nWindows 10/11\nEdge / Chrome\n利用者 〜20名"
+    },
+    {
+      "id": "fw",
+      "zone": "net",
+      "kind": "boundary",
+      "status": "確認済み",
+      "col": 1,
+      "row": 0,
+      "label": "ファイアウォール\n（顧客担当）"
+    },
+    {
+      "id": "app",
+      "zone": "server",
+      "kind": "app",
+      "status": "確認済み",
+      "col": 2,
+      "row": 0,
+      "label": "Webアプリサーバ\nWindows Server\nアプリ基盤"
+    },
+    {
+      "id": "db",
+      "zone": "server",
+      "kind": "data",
+      "status": "確認済み",
+      "col": 2,
+      "row": 1,
+      "label": "データベース\nRDBMS"
+    },
+    {
+      "id": "log",
+      "zone": "server",
+      "kind": "data",
+      "status": "確認済み",
+      "col": 3,
+      "row": 1,
+      "label": "監査ログ\n保持365日"
+    },
+    {
+      "id": "backup",
+      "zone": "net",
+      "kind": "data",
+      "status": "未確認",
+      "col": 3,
+      "row": 2,
+      "label": "バックアップ\nNAS or クラウド\n日次 OSイメージ"
+    },
+    {
+      "id": "mail",
+      "zone": "outside",
+      "kind": "external",
+      "status": "確認済み",
+      "col": 4,
+      "row": 0,
+      "label": "外部メールサーバ\nパスワードリセット用"
+    },
+    {
+      "id": "maint",
+      "zone": "outside",
+      "kind": "external",
+      "status": "確認済み",
+      "col": 4,
+      "row": 2,
+      "label": "保守端末（自社）\nリモート接続ツール"
+    }
+  ],
+  "links": [
+    {
+      "from": "pc",
+      "to": "fw",
+      "label": "HTTPS"
+    },
+    {
+      "from": "fw",
+      "to": "app"
+    },
+    {
+      "from": "app",
+      "to": "db"
+    },
+    {
+      "from": "app",
+      "to": "log"
+    },
+    {
+      "from": "app",
+      "to": "mail",
+      "label": "SMTP"
+    },
+    {
+      "from": "app",
+      "to": "backup",
+      "style": "dashed"
+    },
+    {
+      "from": "maint",
+      "to": "fw",
+      "label": "リモート保守",
+      "style": "dashed",
+      "route": "bottom"
+    }
+  ]
+}
