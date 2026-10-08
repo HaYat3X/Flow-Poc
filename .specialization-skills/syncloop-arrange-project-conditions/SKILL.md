@@ -27,7 +27,8 @@ disable-model-invocation: true
 
 - このディレクトリは特化Skillの保管用であり、保管中は実行しない。
 - 利用者が配置を依頼した場合だけ、ディレクトリ一式を `.agents/skills/` へ配置する。
-- 配置後も利用者がその都度 `$syncloop-arrange-project-conditions` を明示した場合だけ実行する。自然言語の類似依頼や他Skillから自動実行しない。
+- 配置後は `sync-skills` でClaude Code用の `.claude/skills/` にも複製する。
+- 配置後も利用者がその都度 `$syncloop-arrange-project-conditions`（Claude Code・GitHub Copilotでは `/syncloop-arrange-project-conditions`）を明示した場合だけ実行する。自然言語の類似依頼や他Skillから自動実行しない。
 - Skillの実行依頼は、取り決め内容の承認・合意やContextの正式化を意味しない。
 
 ## 実行ゲート

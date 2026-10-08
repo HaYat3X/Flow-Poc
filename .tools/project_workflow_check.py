@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import shutil
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -63,6 +64,11 @@ REQUIRED_PLAIN_FILES = (
     ".agents/skills/syncloop-flow-request-close/SKILL.md",
     ".tools/project_workflow_check.py",
 )
+# Skillの正本は .agents/skills（CodexとCopilotが読む）。Claude Codeは .claude/skills だけを読むため、
+# sync-skills で正本を複製し、共通検査で一致を確かめる。Policyは複製せず .agents/policies だけに置く。
+SKILL_SOURCE = ".agents/skills"
+CLAUDE_SKILL_COPY = ".claude/skills"
+LEGACY_TOOL_COPIES = (".claude/rules",)
 LEGACY_TOP_LEVEL = (
     "00_受付・見積",
     "01_プロジェクト計画",
@@ -400,6 +406,57 @@ def check_structure(root: Path, findings: list[Finding]) -> None:
     for legacy in LEGACY_TOP_LEVEL:
         if (root / legacy).exists():
             add(findings, "warning", f"旧構成のパスが残っています: {legacy}")
+
+
+def skill_files(base: Path) -> dict[str, bytes]:
+    if not base.is_dir():
+        return {}
+    return {
+        path.relative_to(base).as_posix(): path.read_bytes()
+        for path in sorted(base.rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts
+    }
+
+
+def check_tool_copies(root: Path, findings: list[Finding]) -> None:
+    source = skill_files(root / SKILL_SOURCE)
+    copy = skill_files(root / CLAUDE_SKILL_COPY)
+    hint = "正本の .agents/skills を直し、`project_workflow_check.py sync-skills` で複製してください"
+    for relative in sorted(source.keys() - copy.keys()):
+        add(findings, "error", f"Claude用のSkillに複製されていません: {CLAUDE_SKILL_COPY}/{relative}（{hint}）")
+    for relative in sorted(copy.keys() - source.keys()):
+        add(findings, "error", f"正本にないSkillファイルがClaude用にあります: {CLAUDE_SKILL_COPY}/{relative}（{hint}）")
+    for relative in sorted(source.keys() & copy.keys()):
+        if source[relative] != copy[relative]:
+            add(findings, "error", f"Claude用のSkillが正本と異なります: {CLAUDE_SKILL_COPY}/{relative}（{hint}）")
+    for relative in LEGACY_TOOL_COPIES:
+        if (root / relative).exists():
+            add(findings, "warning", f"Policyの複製が残っています。Policyは .agents/policies だけに置きます: {relative}")
+
+
+def sync_skills(root: Path) -> list[str]:
+    """正本の .agents/skills を .claude/skills へそのまま複製し、正本にないファイルを消す。"""
+    source_dir = root / SKILL_SOURCE
+    copy_dir = root / CLAUDE_SKILL_COPY
+    if not source_dir.is_dir():
+        raise ValueError(f"Skillの正本がありません: {SKILL_SOURCE}")
+    source = skill_files(source_dir)
+    copy = skill_files(copy_dir)
+    changes: list[str] = []
+    for relative in sorted(copy.keys() - source.keys()):
+        (copy_dir / relative).unlink()
+        changes.append(f"削除: {CLAUDE_SKILL_COPY}/{relative}")
+    for relative, content in source.items():
+        if copy.get(relative) == content:
+            continue
+        target = copy_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_dir / relative, target)
+        changes.append(f"{'更新' if relative in copy else '追加'}: {CLAUDE_SKILL_COPY}/{relative}")
+    for directory in sorted((p for p in copy_dir.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+        if not any(directory.iterdir()):
+            directory.rmdir()
+    return changes
 
 
 def check_document_contracts(root: Path, findings: list[Finding]) -> None:
@@ -1922,6 +1979,7 @@ def check_work_paths(work_dir: Path, root: Path, findings: list[Finding]) -> Non
 def check_project(root: Path) -> list[Finding]:
     findings: list[Finding] = []
     check_structure(root, findings)
+    check_tool_copies(root, findings)
     check_document_contracts(root, findings)
     check_duplicate_ids(root, findings)
     check_indexes(root, findings)
@@ -1974,7 +2032,7 @@ def main() -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table", "verify-request-close", "gantt"),
+    parser.add_argument("command", nargs="?", choices=("check", "verify-close", "seal-close", "version-table", "verify-request-close", "gantt", "sync-skills"),
                         default="check")
     parser.add_argument("--root", default=".", help="案件ワークスペースのルート")
     parser.add_argument("--strict", action="store_true", help="エラーがあれば終了コード1を返す")
@@ -1989,6 +2047,13 @@ def main() -> int:
                         help="version-table: 削除する正本（複数指定可）")
     args = parser.parse_args()
     root = Path(args.root).resolve()
+    if args.command == "sync-skills":
+        try:
+            changes = sync_skills(root)
+        except ValueError as exc:
+            parser.error(str(exc))
+        print("\n".join(changes) if changes else f"{CLAUDE_SKILL_COPY} は正本と一致しています")
+        return 0
     if args.command == "gantt":
         if not args.wbs:
             parser.error("--wbs が必要です")
