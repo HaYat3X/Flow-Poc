@@ -4,13 +4,14 @@ document_type: work_index
 project_id: PRJ-MINATO-ASSET
 record_status: active
 updated_at: 2026-10-08
-updated_by: Claude（はやて承認）
+updated_by: Claude（はやて承認、W-0001-C01）
 ---
 
 # Work一覧
 
 | Work ID | 関連RQ | Work名 | 状態 | 担当者 | 期限 | 現在のTODO | 次の対応 | 最終更新日 | Workフォルダ |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| W-0001 | RQ-0001 | 論点整理と進め方案の作成 | completed | 佐々木 | 2026-10-14 | なし | なし（次はRQ-0001 P-003） | 2026-10-08 | 04_WK_作業/完了/W-0001_論点整理と進め方案 |
 
 状態は `active`、`on_hold`、`handoff`、`completed`、`cancelled` のいずれかを使用する。
 
