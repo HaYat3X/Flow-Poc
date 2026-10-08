@@ -24,7 +24,7 @@ description: Workの完了条件・候補・残件を照合し、終了状態、
 
 Contextの基本情報・現在の進捗・次にやること・3分サマリと分離済み部分の要約を、適用後のCT・Work・詳細正本から作る。参照元・対象ID・同期時点を残し、差分があればメインのtargetに含める。候補ゼロでも実行状態の変化を確認する。1セクション6,000文字超・メイン本文25,000文字超ならcx-context.mdに従う詳細分離とリンク・索引・context_layoutの修正も承認案へ含める。メインと案件識別情報は残す。
 
-承認後に候補処理履歴を判断済み・未同期（同期不要はその旨）として記録し、その内容を適用前版として版表を作る。Workの承認記録に提示中の承認が残っていればCloseせず、承認か差し戻しを先に記録する。依頼承認記録・計画承認記録・Workの承認記録はsourceとして版表に入る。版表は `project_workflow_check.py version-table --root . --work <Work相対パス> --target <参照>=work:終了反映案/<ファイル>` の出力を使い、SHA256を手で計算しない。終了判断をapprovedとして保存し、`project_workflow_check.py seal-close --root . --work <Work相対パス>` で封印する。終了判断は承認済みでもWorkのrecord_statusはまだ変更しない。正本へ書き込まない。
+承認後に候補処理履歴を判断済み・未同期（同期不要はその旨）として記録し、その内容を適用前版として版表を作る。終了反映案のWork文書では、Work自身のファイルをWorkフォルダからの相対パスで書く。完了フォルダへの移動に合わせたパスの書き換えはしない（Work外からWorkを指す台帳・Contextの参照だけを書き換える）。Workの承認記録に提示中の承認が残っていればCloseせず、承認か差し戻しを先に記録する。依頼承認記録・計画承認記録・Workの承認記録はsourceとして版表に入る。版表は `project_workflow_check.py version-table --root . --work <Work相対パス> --target <参照>=work:終了反映案/<ファイル>` の出力を使い、SHA256を手で計算しない。終了判断をapprovedとして保存し、`project_workflow_check.py seal-close --root . --work <Work相対パス>` で封印する。終了判断は承認済みでもWorkのrecord_statusはまだ変更しない。正本へ書き込まない。
 
 次に使うSkillはsyncloop-flow-sync、対象Work・close_id・反映候補・次アクションを示し、「W-xxxxの承認済みClose判断を終了同期して」と案内する。候補ゼロでも終了同期を案内する。利用者がClose→Sync一括を依頼した場合は承認された終了判断をSyncの手順で適用できる。
 

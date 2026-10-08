@@ -1088,14 +1088,14 @@ def check_work_record(work_dir: Path, root: Path, findings: list[Finding]) -> No
                 if (not source_fields.get("入手元") or not source_fields.get("元資料")
                         or not DATE_PATTERN.fullmatch(source_fields.get("確認日", ""))):
                     add(findings, "error", f"Work追加資料の入手元・確認日・元資料が不足しています: {input_id}: {relative_dir}")
-                local_source = (root / cells[4]).resolve()
+                local_source = close_gate.work_local_path(root, work_dir, cells[4]).resolve()
                 if (not local_source.is_relative_to((work_dir / "入力").resolve())
                         or not local_source.is_file()):
                     add(findings, "error", f"Work追加資料の保管先に実体がありません: {input_id}: {relative_dir}")
         if cells[5] in {"copy", "snapshot"} and cells[4] in {"", "なし", "未設定"}:
             add(findings, "error", f"copyまたはsnapshotのWork内配置先がありません: {input_id}: {relative_dir}")
         elif cells[5] in {"copy", "snapshot"}:
-            local_path = (root / cells[4]).resolve()
+            local_path = close_gate.work_local_path(root, work_dir, cells[4]).resolve()
             if not local_path.is_relative_to((work_dir / "入力").resolve()):
                 add(findings, "error", f"copyまたはsnapshotの配置先がWorkの入力配下ではありません: {input_id}: {relative_dir}")
             elif not local_path.is_file():
@@ -1106,7 +1106,7 @@ def check_work_record(work_dir: Path, root: Path, findings: list[Finding]) -> No
         if not local_input.is_file() or local_input == input_path or local_input.name.startswith("."):
             continue
         local_relative = nfc(local_input.relative_to(root).as_posix())
-        if local_relative not in input_text:
+        if local_relative not in input_text and nfc(local_input.relative_to(work_dir).as_posix()) not in input_text:
             add(findings, "error", f"Work内入力が入力一覧に登録されていません: {local_relative}")
 
     summary = work_dir / "入力/Work入力.md"
@@ -1421,6 +1421,7 @@ def check_indexes(root: Path, findings: list[Finding]) -> None:
         check_work_record(work_dir, root, findings)
         match = ID_PATTERNS["work"].search(work_dir.name)
         work_id = match.group(0) if match else ""
+        check_work_paths(work_dir, root, findings)
         if (work_dir / "作業内容.md").is_file():
             check_approval_record(work_dir / "承認記録.md", "work", root, findings,
                                   read_frontmatter(work_dir / "作業内容.md").get("request_id", ""), work_id,
@@ -1871,6 +1872,24 @@ def check_approval_references(root: Path, findings: list[Finding]) -> None:
             add(findings, "error", f"更新履歴が参照する承認記録がありません: {match.group(0)}")
         elif approval_id not in {entry["id"] for entry in close_gate.approval_entries(read_text(path))}:
             add(findings, "error", f"更新履歴が参照する承認記録の見出しがありません: {match.group(0)}")
+
+
+def check_work_paths(work_dir: Path, root: Path, findings: list[Finding]) -> None:
+    """現行WorkのWork文書について、移動で切れるパスと存在しないパスを確認する（テーマD）。"""
+    relative_dir = nfc(work_dir.relative_to(root).as_posix())
+    # 終了同期済みのWork文書は承認済みの記録なので、直すには再承認が要る。進行中のWorkだけをエラーにする。
+    open_work = read_frontmatter(work_dir / "作業内容.md").get("record_status") in {"active", "on_hold"} \
+        if (work_dir / "作業内容.md").is_file() else True
+    for doc in close_gate.WORK_PATH_DOCS:
+        path = work_dir / doc
+        if not path.is_file():
+            continue
+        text = read_text(path)
+        for token in close_gate.self_root_paths(text, work_dir):
+            add(findings, "error" if open_work else "warning",
+                f"Work自身をルートからのパスで指しています（Workからの相対パスにしてください）: {relative_dir}/{doc}: {token}")
+        for token in close_gate.missing_paths(text, work_dir, root):
+            add(findings, "warning", f"Work文書が存在しないパスを指しています: {relative_dir}/{doc}: {token}")
 
 
 def check_project(root: Path) -> list[Finding]:

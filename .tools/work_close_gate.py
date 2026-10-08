@@ -175,6 +175,37 @@ def approval_problems(entry: dict, scope: str) -> list[str]:
     return problems
 
 
+# Work内のパス（テーマD）: Work自身のファイルはWorkフォルダからの相対パスで書き、移動しても切れないようにする。
+ROOT_PATH = re.compile(r"^(?:0\d|99)_[^/]+/")
+PATH_TOKEN = re.compile(r"(?<![\w/.:])((?:(?:0\d|99)_[^\s/`|）)、。,]+|入力|作業成果)/[^\s`|）)、。,]*)")
+WORK_PATH_DOCS = ("作業内容.md", "作業メモ.md", "反映候補.md", "引継ぎ.md", "承認記録.md",
+                  "入力/入力一覧.md", "入力/Work入力.md")
+
+
+def work_local_path(root: Path, work: Path, value: str) -> Path:
+    """Work文書に書かれたパスを解決する。ルートからのパスも読める（旧書式）。"""
+    value = value.strip().strip("`")
+    return root / value if ROOT_PATH.match(value) else work / value
+
+
+def self_root_paths(text: str, work: Path) -> list[str]:
+    """Work自身をルートからのパスで指している箇所（移動すると切れる）を返す。"""
+    return sorted({token for token in PATH_TOKEN.findall(text)
+                   if ROOT_PATH.match(token) and f"/{work.name}" in token})
+
+
+def missing_paths(text: str, work: Path, root: Path) -> list[str]:
+    missing = []
+    for token in sorted(set(PATH_TOKEN.findall(text))):
+        if f"/{work.name}" in token:
+            continue  # self_root_pathsで扱う
+        if not re.search(r"\.\w+$", token):
+            continue  # フォルダや「作業成果/01〜03」のような略記は対象外（ファイルだけを確認する）
+        if not work_local_path(root, work, token.rstrip("/")).exists():
+            missing.append(token)
+    return missing
+
+
 def split_ids(value: str) -> list[str]:
     return [] if value.strip() in {"", "なし", "none"} else [v.strip() for v in value.split(",") if v.strip()]
 
@@ -467,6 +498,17 @@ def validate(work: Path, root: Path, phase: str | None = None, require_seal: boo
     for ref in sorted(set(REQUIRED_WORK_REFS) - refs.keys()):
         errors.append(f"承認対象の版に必須Work記録がありません: {ref}")
     if compare_phase:
+        # 終了後のWork文書（承認用内容があればそれ、なければ現在の文書）に、移動で切れるパスを残さない。
+        for doc in WORK_PATH_DOCS:
+            row = refs.get("work:" + doc)
+            try:
+                source = resolve_ref(root, work, row[4]) if row and row[0] == "target" and row[3] != "missing" \
+                    else work / doc
+            except ValueError:
+                continue
+            if source.is_file():
+                for token in self_root_paths(read_text(source), work):
+                    errors.append(f"Work自身をルートからのパスで指しています（移動すると切れるため、Workからの相対パスにしてください）: {doc}: {token}")
         for ref in CLOSE_TARGET_WORK_REFS:
             row = refs.get(ref)
             if not row or row[0] != "target":

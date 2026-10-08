@@ -61,7 +61,7 @@ request_completionがunknownならresolve_blocker。待ち状態しか残らな�
 
 1. 終了判断・封印・入力・結果・正本を再読し、`project_workflow_check.py verify-close --root . --work <Work相対パス> --phase before` を実行する。承認済みで全source/targetが適用前版に一致する場合だけ進む。
 2. decision_statusをapplyingにし、承認されたtargetを適用する。候補処理履歴へ同期済みと反映先を残す内容は、承認用ファイルに含める。採否や次アクションを追加判断しない。
-3. completedではWorkフォルダを完了へ移動し、関連参照を承認済み適用後内容に合わせる。移動後もwork:参照は同じWorkを指す。
+3. completedではWorkフォルダを完了へ移動し、関連参照を承認済み適用後内容に合わせる。Work文書の中のWork自身へのパスはWorkからの相対パスなので書き換えない。Work文書（承認用内容を含む）にWork自身をルートからのパスで書いた箇所があれば、verify-closeが移動で切れるパスとして止める。移動後もwork:参照は同じWorkを指す。
 4. `verify-close --phase after` で全sourceが不変、全targetが適用後版であることを確認する。承認されたfinal_statusと全Work記録・台帳の一致、候補の同期済み/同期不要を確認する。
 5. decision_statusをsynced、synced_atを実日時へ更新して共通検査を実行する。保存済みnext_action・対象・理由を案内する。Closeの再依頼や通常のPlanレビューを追加しない。
 
