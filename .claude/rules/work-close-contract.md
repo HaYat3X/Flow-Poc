@@ -15,7 +15,8 @@ Workの `終了判断.md` に次を保存する。
 - final_status: completed / cancelled / on_hold / handoff。
 - request_completion: satisfied / unsatisfied / unknown（依頼の終了条件の判定）。
 - plan_revision: 判断対象の計画改訂番号。計画なしの緊急例外では0とし、例外根拠を記載する。
-- remaining_planned_work: 終了同期後に残る計画済みWork候補数。並行Work・依存待ちも含める。今回の終了Workは除く。
+- remaining_planned_work: 終了同期後に残る計画済みWork候補数。進行計画の今回始めるWorkのうち未着手・開始済みの行（旧形式ではWork候補のplanned行）。並行Work・依存待ちも含める。今回の終了Workは除く。
+- unplanned_remaining: WBSに未完了の作業パッケージ（子のない行）が残り、進行計画の残りの行で扱われていない場合にtrue（旧形式ではplan_coverage: partial）。
 - unplanned_remaining: true / false、plan_changed: true / false、continuation_blocked: true / false。
 - next_action: continue_work / plan_remaining / replan / request_close / resolve_blocker、next_target、next_reason。
 - approved_by、approved_at、updated_by、updated_at。draftでは承認情報はnone。適用完了時だけsynced_atを記録する。
@@ -29,8 +30,8 @@ Workの `終了判断.md` に次を保存する。
 1. 判断不足・行き先のない残件・継続阻害がある → resolve_blocker。
 2. 依頼の終了条件がsatisfiedで、他の計画済み・並行Workや未計画範囲が残らない → request_close。
 3. 前提・依存・方針・終了条件の見直しが必要 → replan。
-4. 開始可能な計画済み候補が残る → continue_work（next_targetにP-ID、並行Workの継続ならW-ID。既存W-IDを重複開始しない）。
-5. 計画済み候補がなく、未計画範囲が残る → plan_remaining（next_targetにRQ-IDと具体範囲）。
+4. 開始可能な計画済み候補が残る → continue_work（next_targetに進行計画の行のP-ID、並行Workの継続ならW-ID。既存W-IDを重複開始しない）。
+5. 計画済み候補がなく、未計画範囲が残る → plan_remaining（next_targetにRQ-IDと次の区切りで扱うP-ID。Planで進行計画を書き直し、区切り承認を受ける）。
 6. 終了条件がunsatisfiedで計画済み候補も未計画範囲の記録もない → plan_remainingとして不足を明示し、残りの作業を洗い出す。
 
 request_completionがunknownならresolve_blocker。待ち状態しか残らない場合もcontinuation_blockedとして具体的な解消条件を残す。計画を変更せず継続するWorkに追加のPlanレビューを要求しない。plan_remainingは承認済み部分計画の拡張であり、単なる消化を理由にneeds_revisionへ落とさない。replanの場合だけ依頼・計画をneeds_revisionへ揃える。

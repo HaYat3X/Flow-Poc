@@ -73,6 +73,112 @@ def table_rows(text: str) -> list[list[str]]:
             for line in text.splitlines() if line.startswith("|") and not re.match(r"^\|\s*:?-+", line)]
 
 
+
+# --- WBSと進行計画（plan_format: split）-------------------------------------------
+WBS_HEADING = "## 作業パッケージ"
+WBS_MILESTONE_HEADING = "## マイルストーン・判断ゲート"
+PLAN_WORK_HEADING = "## 今回始めるWork"
+WBS_STATES = {"未着手", "進行中", "保留", "完了", "中止"}
+PLAN_WORK_STATES = {"未着手", "開始済み", "完了", "中止"}
+DATE_CONFIDENCE = {"確定", "仮"}
+GANTT_START = "<!-- gantt:start -->"
+GANTT_END = "<!-- gantt:end -->"
+PLAN_ID = re.compile(r"P-\d{3}")
+
+
+def wbs_rows(text: str) -> list[list[str]]:
+    """作業パッケージ表の行（11列）。列: ID, 親, 名前, 成果物, 完了条件, 開始, 終了, 先行, 確度, 状態, 紐づくWork。"""
+    return [r for r in table_rows(section(text, WBS_HEADING)) if r and PLAN_ID.fullmatch(r[0])]
+
+
+def wbs_milestones(text: str) -> list[list[str]]:
+    """マイルストーン表の行。列: 節目, 予定日, 確度, 到達条件, 判断者, 関連ID。"""
+    return [r for r in table_rows(section(text, WBS_MILESTONE_HEADING)) if r and r[0] != "節目"]
+
+
+def plan_work_rows(text: str) -> list[list[str]]:
+    """進行計画の今回始めるWork（9列）。列: 順番, Work, 計画項目ID, 担当, 予定, 開始条件, 完了条件, 状態, Work ID。"""
+    return [r for r in table_rows(section(text, PLAN_WORK_HEADING)) if r and r[0] != "順番"]
+
+
+def split_ids(value: str) -> list[str]:
+    return [] if value.strip() in {"", "なし", "none"} else [v.strip() for v in value.split(",") if v.strip()]
+
+
+def render_gantt(text: str, title: str) -> list[str]:
+    """作業パッケージ表とマイルストーン表から、毎回同じMermaidガントを生成する。日付が未定の行は図に載せない。"""
+    rows = wbs_rows(text)
+    by_id = {r[0]: r for r in rows if len(r) == 11}
+
+    def top(row_id: str) -> str:
+        seen = set()
+        while by_id.get(row_id) and by_id[row_id][1] in by_id and row_id not in seen:
+            seen.add(row_id)
+            row_id = by_id[row_id][1]
+        return row_id
+
+    lines = ["```mermaid", "gantt", f"    title {title}", "    dateFormat YYYY-MM-DD",
+             "    axisFormat %m/%d", "    todayMarker off"]
+    sections: list[str] = []
+    for row in by_id.values():
+        root_id = top(row[0])
+        if root_id not in sections:
+            sections.append(root_id)
+    for root_id in sections:
+        lines.append("")
+        lines.append(f"    section {root_id} {by_id[root_id][2]}")
+        for row in by_id.values():
+            if top(row[0]) != root_id or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row[5]) \
+                    or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row[6]):
+                continue
+            label = f"{row[0]} {row[2]}" + ("（仮）" if row[8] == "仮" else "")
+            tag = {"完了": "done, ", "進行中": "active, "}.get(row[9], "")
+            span = "1d" if row[5] == row[6] else row[6]
+            lines.append(f"    {label.replace(':', '：')} :{tag}{row[0].lower().replace('-', '')}, {row[5]}, {span}")
+    undated = [r[0] for r in by_id.values() if not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", r[5])
+                                                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", r[6]))]
+    if undated:
+        lines.append("")
+        lines.append(f"    %% 日付未定のため図に載せていない計画項目: {', '.join(undated)}")
+    milestones = [m for m in wbs_milestones(text) if len(m) >= 3 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", m[1])]
+    if milestones:
+        lines.append("")
+        lines.append("    section 判断ゲート")
+        for index, row in enumerate(milestones, 1):
+            label = row[0] + ("（仮）" if row[2] == "仮" else "")
+            lines.append(f"    {label.replace(':', '：')} :milestone, m{index:02d}, {row[1]}, 0d")
+    lines.append("```")
+    return lines
+
+
+def gantt_block(text: str) -> str | None:
+    if GANTT_START not in text or GANTT_END not in text:
+        return None
+    return text.split(GANTT_START, 1)[1].split(GANTT_END, 1)[0].strip("\n")
+
+
+def with_gantt(text: str, title: str) -> str:
+    body = "\n".join(render_gantt(text, title))
+    head, rest = text.split(GANTT_START, 1)
+    return f"{head}{GANTT_START}\n{body}\n{GANTT_END}{rest.split(GANTT_END, 1)[1]}"
+
+
+def wbs_title(text: str) -> str:
+    match = re.search(r"^# (.+)$", text, re.MULTILINE)
+    return match.group(1).strip() if match else "WBS"
+
+
+def split_plan_summary(plan_text: str, wbs_text: str, work_id: str) -> dict:
+    """終了判断の照合に使う、区切りの残りWork数・今回Workの行・未計画範囲の有無。"""
+    rows = [r for r in plan_work_rows(plan_text) if len(r) == 9]
+    remaining = [r for r in rows if r[7] in {"未着手", "開始済み"} and r[8] != work_id]
+    current = [r for r in rows if r[8] == work_id]
+    covered = {r[2] for r in remaining} | {r[2] for r in current if r[7] == "開始済み"}
+    packages = [r for r in wbs_rows(wbs_text) if len(r) == 11]
+    parents = {r[1] for r in packages}
+    open_leaves = [r for r in packages if r[0] not in parents and r[9] not in {"完了", "中止"} and r[0] not in covered]
+    return {"remaining": remaining, "current": current, "unplanned": bool(open_leaves)}
+
 def next_action(request_completion: str, remaining_planned_work: int, unplanned_remaining: bool,
                 plan_changed: bool = False, continuation_blocked: bool = False) -> str:
     """Closeが確定した事実から案内を選ぶ。Syncは保存済み案内との一致だけを検査する。"""
@@ -115,6 +221,42 @@ def resolve_ref(root: Path, work: Path, ref: str) -> Path:
     if not path.is_relative_to(base):
         raise ValueError(f"版参照が対象外を指しています: {ref}")
     return path
+
+
+class _SplitDone(Exception):
+    """分離形式の計画の照合を終えたことを示す（旧形式の照合を飛ばす）。"""
+
+
+def validate_split_plan(root: Path, work: Path, refs: dict, plan_path: Path, plan_text: str, data: dict,
+                        final: str, remaining: str, work_id: str) -> list[str]:
+    """WBSと進行計画を分けた計画（plan_format: split）で、終了判断の数値・次アクションを照合する。"""
+    errors: list[str] = []
+    wbs_ref = nfc(metadata(plan_path).get("wbs_file", "none"))
+    if wbs_ref in {"", "none"}:
+        return ["分離形式の進行計画にwbs_fileがありません"]
+    if wbs_ref not in refs:
+        return ["承認対象の版に関連WBSがありません"]
+    row = refs[wbs_ref]
+    if row[3] == "missing":
+        return ["終了同期で関連WBSを削除できません"]
+    wbs_path = resolve_ref(root, work, row[4] if row[0] == "target" else wbs_ref)
+    if not wbs_path.is_file():
+        return ["承認用WBSがありません"]
+    summary = split_plan_summary(plan_text, read_text(wbs_path), work_id)
+    if remaining.isdigit() and int(remaining) != len(summary["remaining"]):
+        errors.append("終了判断の残りWork数が承認用進行計画と一致しません")
+    if (data.get("unplanned_remaining") == "true") != summary["unplanned"]:
+        errors.append("終了判断の未計画範囲が承認用WBS・進行計画と一致しません")
+    expected = {"completed": "完了", "cancelled": "中止"}.get(final, "開始済み")
+    if len(summary["current"]) != 1 or summary["current"][0][7] != expected:
+        errors.append("今回Workの行の状態が承認用進行計画と一致しません")
+    if data.get("next_action") == "continue_work":
+        target = data.get("next_target", "")
+        if not any(r[2] in target or (r[8] not in {"未発行", ""} and r[8] in target) for r in summary["remaining"]):
+            errors.append("次の対象が進行計画の未完了の行にありません")
+    if data.get("next_action") == "replan" and metadata(plan_path).get("planning_status") != "needs_revision":
+        errors.append("再計画の承認用計画がneeds_revisionではありません")
+    return errors
 
 
 def validate(work: Path, root: Path, phase: str | None = None, require_seal: bool = True) -> list[str]:
@@ -291,6 +433,10 @@ def validate(work: Path, root: Path, phase: str | None = None, require_seal: boo
                         plan_text = read_text(effective)
                         if metadata(effective).get("plan_revision") != revision:
                             errors.append("終了判断の計画改訂番号が承認用計画と一致しません")
+                        if metadata(effective).get("plan_format") == "split":
+                            errors += validate_split_plan(root, work, refs, effective, plan_text, data, final,
+                                                          remaining, scope.get("work_id", ""))
+                            raise _SplitDone
                         planned = [r for r in table_rows(section(plan_text, "## Work候補"))
                                    if len(r) == 10 and re.fullmatch(r"P-\d{3}", r[0])]
                         remaining_count = sum(r[8] == "planned" and r[9] != scope.get("work_id") for r in planned)
@@ -309,6 +455,8 @@ def validate(work: Path, root: Path, phase: str | None = None, require_seal: boo
                                 errors.append("次の対象が未消化の計画済み候補にありません")
                         if data.get("next_action") == "replan" and metadata(effective).get("planning_status") != "needs_revision":
                             errors.append("再計画の承認用計画がneeds_revisionではありません")
+                except _SplitDone:
+                    pass
                 except (ValueError, OSError) as exc:
                     errors.append(str(exc))
         for ref in CLOSE_TARGET_LEDGERS:
@@ -381,6 +529,10 @@ def version_table_refs(work: Path, root: Path) -> list[str]:
         plan = metadata(request).get("plan_file", "none")
         if plan not in {"", "none"}:
             refs.append(plan)
+            if (root / plan).is_file():
+                wbs = metadata(root / plan).get("wbs_file", "none")
+                if wbs not in {"", "none"}:
+                    refs.append(wbs)
     for context in sorted((root / "03_CX_コンテキスト").glob("*.md")):
         if metadata(context).get("document_type") == "project_context":
             refs.append(context.relative_to(root).as_posix())

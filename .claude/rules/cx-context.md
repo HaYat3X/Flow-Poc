@@ -29,7 +29,7 @@
 - `approved_by`：人・役割。`DEC-ID` ではない。`approved_at` と組で使う。
 - `basis`：根拠。`evidence`（資料参照）／`rationale`（専門判断の理由文）／`approval_ref`（案件上承認）のいずれか。
 - `required_by`：意味上の制約のみ（例：「基本設計開始前」「MS-003まで」）。具体日付は持たない。
-- `resolution_task_ref`：対応Work/TODOへの参照（例：`W-0007#T-001`）。解決する作業の期限・担当・進捗はWorkの実体に置く。
+- `resolution_task_ref`：対応Work/TODOへの参照（例：`W-0007#T-001`）、または計画項目への参照（例：`RQ-0001#P-003`）。依頼登録時に解消作業が決まっていなければ `未割当（Plan）` とし、Plan承認時に計画項目を割り当てる。解決する作業の期限・担当・進捗はWorkの実体に置く。
 - `working_assumption`／`working_assumption_ref`：`conflict` 時の作業上採用値とその承認根拠。
 - `applies_to`：適用範囲（`project` または `CTX-`／`RQ-`／機能・リリース名）。
 - `replaced_by`：置換時のみ使用。常用しない。

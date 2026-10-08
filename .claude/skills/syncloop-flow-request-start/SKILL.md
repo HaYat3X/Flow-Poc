@@ -19,6 +19,8 @@ Contextは既存の20セクションを使い、全欄の確定を登録条件�
 
 依頼の作成・改訂ごとに、目的・要求・対象/対象外・受入条件・前提/未確認等を既存Contextと照合し、対象CTX・現在値・変更案・確度・適用範囲・根拠を承認案に含める。RQ固有のContextはapplies_toにRQ-IDを記録する。差分がなければ更新不要理由を示す。案の段階で承認済みの現在値を上書きしない。
 
+unknown・conflictのContextで解消する作業がまだ決まっていない場合は、resolution_task_refを `未割当（Plan）` とし、Planで計画項目を割り当てる。
+
 承認後は[プロジェクト計画](assets/プロジェクト計画.md)を `02_CT_管理/依頼/RQ-xxxx_プロジェクト計画.md` へ保存する。文書見出しは `RQ-xxxx プロジェクト計画（案件名）` とする。受付原本をINに保持し、MAT台帳とRQ.related_inputsを関連付ける。初回は案件Contextに識別情報と最小核を必ず反映し、管理4台帳・必須文書のproject_idと更新情報を初期化する。追加受付・改訂は承認対象に含まれるContext差分だけをプロジェクト計画の保存と同じ変更単位で反映し、同一意味の既存CTXは更新する。プロジェクト計画の本文・状態・進捗をCXへ複製しない。既存文書は実際の参照先を使い、名称変更だけのために自動改名しない。
 
 新規RQはplanning_status: unplanned、plan_file: noneで開始し、次はPlanを案内する。改訂では既存の状態・関連Work・計画参照を維持し、承認済み計画の前提が変わる場合はRQとPlan双方のplanning_statusをneeds_revisionへ揃えて再計画を案内する。この状態変更も承認案に含め、既存の計画項目・改訂履歴を消さない。依頼一覧・現在地・更新履歴・Context索引/トレーサビリティを整合し、更新履歴にはContextの反映内容または更新不要理由と根拠を残す。計画未承認で空のPlanを作らない。依頼受付の初期化は登録承認に含まれる場合だけ行い、空ならempty/registered_request_id: none、内容を残すならregistered/registered_request_id: 対象RQ-IDへ揃える。別依頼の記入開始時はregistered_request_idをnoneに戻す。共通検査を実行する。Workは作成しない。
