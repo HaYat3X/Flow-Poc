@@ -92,6 +92,13 @@ PLACEHOLDER_VALUES = {"", "TBD", "RQ-TBD", "W-TBD", "CTX-TBD"}
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ][0-9:]+(?:Z|[+-][0-9:]+)?)?")
 REQUEST_STATUSES = {"registered", "active", "on_hold", "completed", "cancelled", "archived"}
 PLANNING_STATUSES = {"unplanned", "approved", "needs_revision"}
+# 依頼の性質（request_type）と開始フェーズ（lifecycle_start）は別の軸。開始フェーズは案件Contextの「現在フェーズ」と同じ語彙。
+REQUEST_TYPES = ("new_development", "enhancement", "investigation", "estimate", "maintenance", "other")
+LIFECYCLE_PHASES = ("提案・見積", "契約前", "要件定義", "基本設計", "詳細設計", "実装", "テスト", "移行", "保守")
+PROJECT_ID_PATTERN = re.compile(r"PRJ-[A-Z0-9]+(?:-[A-Z0-9]+)*")
+FLOW_PROJECT_ID_PATTERN = re.compile(r"flow-\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*")
+# 原本は受け取った形式のまま、YYYY-MM-DD_資料種別_件名.拡張子 で置く（書き起こしは別ファイル）。
+MATERIAL_NAME_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}_[^_\s]+_[^\s]+\.[A-Za-z0-9]+")
 PLAN_HEADINGS = (
     "## 進め方の要約",
     "## 依頼全体の到達点・終了条件",
@@ -455,10 +462,16 @@ def check_initialized_project(root: Path, findings: list[Finding]) -> None:
     if len(distinct_ids) > 1:
         details = ", ".join(f"{path}={value}" for path, value in project_ids.items())
         add(findings, "error", f"project_idが管理文書間で一致しません: {details}")
+    for value in sorted(distinct_ids):
+        if not PROJECT_ID_PATTERN.fullmatch(value):
+            add(findings, "error", f"project_idの書式が不正です（PRJ-英大文字・数字・ハイフン）: {value}")
 
     overview = project_identity(root)
     if is_placeholder(overview.get("flow_project_id")):
         add(findings, "error", "初回依頼登録後に案件Contextのflow_project_idが未設定です")
+    elif not FLOW_PROJECT_ID_PATTERN.fullmatch(overview.get("flow_project_id", "")):
+        add(findings, "error", "案件Contextのflow_project_idの書式が不正です（flow-YYYY-英小文字・数字・ハイフン）: "
+            f"{overview.get('flow_project_id')}")
     if is_placeholder(overview.get("project_name")):
         add(findings, "error", "初回依頼登録後に案件Contextのproject_nameが未設定です")
     initialized_from = overview.get("initialized_from_request")
@@ -500,6 +513,10 @@ def check_initialized_project(root: Path, findings: list[Finding]) -> None:
             add(findings, "error", f"依頼のrequest_statusが不正です: {relative}")
         if metadata.get("planning_status") not in PLANNING_STATUSES:
             add(findings, "error", f"依頼のplanning_statusが不正です: {relative}")
+        if not is_placeholder(metadata.get("request_type")) and metadata.get("request_type") not in REQUEST_TYPES:
+            add(findings, "error", f"依頼のrequest_typeが選択肢にありません（{' / '.join(REQUEST_TYPES)}）: {relative}")
+        if not is_placeholder(metadata.get("lifecycle_start")) and metadata.get("lifecycle_start") not in LIFECYCLE_PHASES:
+            add(findings, "error", f"依頼のlifecycle_startが選択肢にありません（{' / '.join(LIFECYCLE_PHASES)}）: {relative}")
         for field in ("created_at", "updated_at"):
             value = metadata.get(field, "")
             if not is_placeholder(value) and not DATE_PATTERN.fullmatch(value):
@@ -1463,11 +1480,17 @@ def check_input_materials(root: Path, findings: list[Finding]) -> None:
         if not path.is_file() or path.name.startswith("."):
             continue
         relative = nfc(path.relative_to(root).as_posix())
+        check_material_name(path, relative, findings)
         if relative not in index_text:
             if intake_open:
                 add(findings, "warning", f"受付中の原本が入力資料一覧に未登録です（Request Startで登録）: {relative}")
             else:
                 add(findings, "error", f"入力資料一覧に登録されていません: {relative}")
+
+
+def check_material_name(path: Path, label: str, findings: list[Finding]) -> None:
+    if not MATERIAL_NAME_PATTERN.fullmatch(nfc(path.name)):
+        add(findings, "warning", f"原本のファイル名が YYYY-MM-DD_資料種別_件名.拡張子 の形ではありません: {label}")
 
 
 REQUEST_CLOSURE_HEADINGS = (
@@ -1890,6 +1913,10 @@ def check_work_paths(work_dir: Path, root: Path, findings: list[Finding]) -> Non
                 f"Work自身をルートからのパスで指しています（Workからの相対パスにしてください）: {relative_dir}/{doc}: {token}")
         for token in close_gate.missing_paths(text, work_dir, root):
             add(findings, "warning", f"Work文書が存在しないパスを指しています: {relative_dir}/{doc}: {token}")
+    if open_work and (work_dir / "入力").is_dir():
+        for path in (work_dir / "入力").rglob("*"):
+            if path.is_file() and not path.name.startswith(".") and path.name not in {"Work入力.md", "入力一覧.md"}:
+                check_material_name(path, f"{relative_dir}/{path.relative_to(work_dir).as_posix()}", findings)
 
 
 def check_project(root: Path) -> list[Finding]:
